@@ -128,21 +128,37 @@ public static class AnthropicUsageClient
         var root = JsonNode.Parse(json) as JsonObject
             ?? throw new InvalidOperationException("Unexpected usage response");
 
-        return new UsageSnapshot
+        var snapshot = new UsageSnapshot
         {
             Session = ReadWindow(root, "five_hour"),
             Weekly = ReadWindow(root, "seven_day"),
             WeeklyOpus = ReadWindow(root, "seven_day_opus"),
             FetchedAt = DateTimeOffset.Now,
         };
+
+        foreach (var kv in root)
+        {
+            if (kv.Key is "five_hour" or "seven_day" or "seven_day_opus") continue;
+            if (kv.Value is JsonObject obj && obj["utilization"] != null)
+            {
+                var window = ReadWindowObject(obj);
+                if (window != null)
+                    snapshot.Extra.Add(new NamedWindow { Key = kv.Key, Window = window });
+            }
+        }
+
+        return snapshot;
     }
 
     private static UsageWindow? ReadWindow(JsonObject root, string key)
     {
         var node = root[key] as JsonObject;
         if (node == null && root["usage"] is JsonObject nested) node = nested[key] as JsonObject;
-        if (node == null) return null;
+        return node == null ? null : ReadWindowObject(node);
+    }
 
+    private static UsageWindow? ReadWindowObject(JsonObject node)
+    {
         var window = new UsageWindow
         {
             Utilization = Math.Clamp(ReadDouble(node, "utilization") ?? 0, 0, 100),

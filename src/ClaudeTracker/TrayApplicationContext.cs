@@ -22,6 +22,13 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     public IReadOnlyList<AccountState> States => _states;
     public DateTimeOffset? LastUpdated { get; private set; }
+    public TrackerConfig Config => _config;
+
+    public void SaveConfig()
+    {
+        CredentialStore.Save(_config);
+        UpdateIcon();
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -244,12 +251,16 @@ public sealed class TrayApplicationContext : ApplicationContext
                 best = Math.Max(best, st.Snapshot.Session.Utilization);
         }
 
+        Color accent = Color.White;
+        try { accent = ColorTranslator.FromHtml(_config.AccentColor); }
+        catch { }
+
         Color severity = best switch
         {
             < 0 => Color.FromArgb(152, 152, 157),
             >= 90 => Color.FromArgb(255, 69, 58),
             >= 70 => Color.FromArgb(255, 159, 10),
-            _ => Color.White,
+            _ => accent,
         };
 
         using var bmp = new Bitmap(32, 32);
