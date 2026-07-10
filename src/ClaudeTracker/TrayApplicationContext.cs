@@ -3,6 +3,7 @@ using System.Drawing.Text;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 namespace ClaudeTracker;
@@ -79,6 +80,31 @@ public sealed class TrayApplicationContext : ApplicationContext
             acct.CredentialsPath = path;
         }
 
+        _config.Accounts.Add(acct);
+        CredentialStore.Save(_config);
+        _states.Add(new AccountState(acct));
+        _ = RefreshAllAsync();
+        return null;
+    }
+
+    public string? AddAccountFromTokens(string name, RefreshedTokens tokens)
+    {
+        name = name.Trim();
+        if (name.Length == 0) name = "Account " + (_config.Accounts.Count + 1);
+        if (_config.Accounts.Any(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            return "That name is already in use.";
+
+        var credsJson = new JsonObject
+        {
+            ["claudeAiOauth"] = new JsonObject
+            {
+                ["accessToken"] = tokens.AccessToken,
+                ["refreshToken"] = tokens.RefreshToken,
+                ["expiresAt"] = tokens.ExpiresAtUnixMs,
+            },
+        };
+
+        var acct = new AccountConfig { Name = name, CredentialsJson = credsJson.ToJsonString() };
         _config.Accounts.Add(acct);
         CredentialStore.Save(_config);
         _states.Add(new AccountState(acct));

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
@@ -30,7 +31,9 @@ public sealed class FlyoutForm : Form
     private float _scale = 1f;
     private TextBox? _nameBox;
     private TextBox? _credsBox;
+    private TextBox? _codeBox;
     private Label? _manageError;
+    private AuthorizeRequest? _pendingAuth;
 
     public DateTimeOffset? HiddenAt { get; private set; }
 
@@ -87,7 +90,8 @@ public sealed class FlyoutForm : Form
 
     public void RefreshView()
     {
-        if (Visible && IsHandleCreated)
+        // Never rebuild while the Manage tab is open — it would wipe text the user is typing.
+        if (Visible && IsHandleCreated && !_showManage)
             BeginInvoke(new Action(() => { Rebuild(); PositionNearTray(); }));
     }
 
@@ -106,6 +110,7 @@ public sealed class FlyoutForm : Form
         foreach (var c in old) c.Dispose();
         _nameBox = null;
         _credsBox = null;
+        _codeBox = null;
         _manageError = null;
 
         Width = S(380);
@@ -277,7 +282,7 @@ public sealed class FlyoutForm : Form
         Controls.Add(heading);
         y += S(30);
 
-        var nameHint = MakeLabel("Name", FontSmall, TextSecondary, w, labelH);
+        var nameHint = MakeLabel("Name (e.g. Work)", FontSmall, TextSecondary, w, labelH);
         nameHint.Location = new Point(pad, y);
         Controls.Add(nameHint);
         y += labelH + S(2);
@@ -285,9 +290,36 @@ public sealed class FlyoutForm : Form
         _nameBox = MakeTextBox(w, false);
         _nameBox.Location = new Point(pad, y);
         Controls.Add(_nameBox);
-        y += _nameBox.Height + S(10);
+        y += _nameBox.Height + S(12);
 
-        var credsHint = MakeLabel("Path to .credentials.json, or paste its JSON", FontSmall, TextSecondary, w, labelH);
+        var signIn = MakeButtonLabel("Sign in with Claude", FontTab, w, S(34));
+        signIn.Location = new Point(pad, y);
+        signIn.Click += (s, e) => StartSignIn();
+        Controls.Add(signIn);
+        y += S(34) + S(10);
+
+        if (_pendingAuth != null)
+        {
+            var authHint = MakeLabel(
+                "Browser opened. Sign in to the account you want to track (use a private window for a second account), approve access, then paste the code shown:",
+                FontSmall, TextSecondary, w, S(70));
+            authHint.Location = new Point(pad, y);
+            Controls.Add(authHint);
+            y += S(70) + S(4);
+
+            _codeBox = MakeTextBox(w, false);
+            _codeBox.Location = new Point(pad, y);
+            Controls.Add(_codeBox);
+            y += _codeBox.Height + S(8);
+
+            var complete = MakeButtonLabel("Complete sign-in", FontTab, w, S(34));
+            complete.Location = new Point(pad, y);
+            complete.Click += (s, e) => CompleteSignIn();
+            Controls.Add(complete);
+            y += S(34) + S(10);
+        }
+
+        var credsHint = MakeLabel("Or: path to a .credentials.json, or paste its JSON", FontSmall, TextSecondary, w, labelH);
         credsHint.Location = new Point(pad, y);
         Controls.Add(credsHint);
         y += labelH + S(2);
@@ -295,9 +327,9 @@ public sealed class FlyoutForm : Form
         _credsBox = MakeTextBox(w, true);
         _credsBox.Location = new Point(pad, y);
         Controls.Add(_credsBox);
-        y += _credsBox.Height + S(12);
+        y += _credsBox.Height + S(10);
 
-        var add = MakeButtonLabel("Add account", FontTab, w, S(34));
+        var add = MakeButtonLabel("Add from file / JSON", FontTab, w, S(34));
         add.Location = new Point(pad, y);
         add.Click += (s, e) => DoAdd();
         Controls.Add(add);
@@ -306,16 +338,67 @@ public sealed class FlyoutForm : Form
         _manageError = MakeLabel("", FontSmall, WarnColor, w, S(36));
         _manageError.Location = new Point(pad, y);
         Controls.Add(_manageError);
-        y += S(36) + S(4);
-
-        var hint = MakeLabel(
-            "Your Claude Code sign-in (%USERPROFILE%\\.claude\\.credentials.json) is added automatically on first run.",
-            FontSmall, TextSecondary, w, S(52));
-        hint.Location = new Point(pad, y);
-        Controls.Add(hint);
-        y += S(52);
+        y += S(36);
 
         return y + S(8);
+    }
+
+    private void StartSignIn()
+    {
+        _pendingAuth = AnthropicUsageClient.CreateAuthorizeRequest();
+        try
+        {
+            Process.Start(new ProcessStartInfo(_pendingAuth.Url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Browser launch failed; the paste box still appears and the user can retry.
+        }
+        BeginInvoke(new Action(() => { Rebuild(); PositionNearTray(); }));
+    }
+
+    private async void CompleteSignIn()
+    {
+        var auth = _pendingAuth;
+        var codeBox = _codeBox;
+        var errLabel = _manageError;
+        var nameBox = _nameBox;
+        if (auth == null || codeBox == null || errLabel == null) return;
+
+        string pasted = codeBox.Text.Trim();
+        if (pasted.Length == 0)
+        {
+            errLabel.Text = "Paste the code from the browser first.";
+            return;
+        }
+
+        errLabel.Text = "Signing in…";
+        try
+        {
+            var tokens = await AnthropicUsageClient.ExchangeCodeAsync(pasted, auth.State, auth.Verifier);
+            if (errLabel.IsDisposed) return;
+            if (tokens == null)
+            {
+                errLabel.Text = "Sign-in failed. Click Sign in with Claude and try again.";
+                return;
+            }
+
+            string? error = _owner.AddAccountFromTokens(nameBox?.Text ?? "", tokens);
+            if (error != null)
+            {
+                errLabel.Text = error;
+                return;
+            }
+
+            _pendingAuth = null;
+            _showManage = false;
+            Rebuild();
+            PositionNearTray();
+        }
+        catch (Exception ex)
+        {
+            if (!errLabel.IsDisposed) errLabel.Text = "Sign-in failed: " + ex.Message;
+        }
     }
 
     private void DoAdd()

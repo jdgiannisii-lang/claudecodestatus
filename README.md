@@ -39,7 +39,12 @@ on the machine at least once. Your default sign-in is picked up automatically on
 
 ### Adding more accounts
 
-Open the flyout → **Manage** → give the account a name and either:
+Open the flyout → **Manage** → give the account a name and click **Sign in with Claude**.
+Your browser opens Claude's authorization page — sign in to the account you want to track
+(use a private/incognito window if your browser is already logged in to your other account),
+approve access, then paste the code it shows back into the app and click **Complete sign-in**.
+
+Alternatively, you can add an account from credentials directly:
 
 - a **path** to another `.credentials.json` (e.g. from a second Claude Code config dir via
   `CLAUDE_CONFIG_DIR`), or

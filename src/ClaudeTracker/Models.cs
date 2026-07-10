@@ -57,3 +57,10 @@ public sealed class RefreshedTokens
     public string? RefreshToken { get; init; }
     public long ExpiresAtUnixMs { get; init; }
 }
+
+public sealed class AuthorizeRequest
+{
+    public required string Url { get; init; }
+    public required string Verifier { get; init; }
+    public required string State { get; init; }
+}
