@@ -15,14 +15,20 @@ macOS menubar tools that show your 5-hour session usage and weekly cap at a glan
 - **Settings tab**: four themes (Dark, Midnight, OLED, Light), accent color presets plus a
   full color picker, and animation options (slide/fade flyout entrance, animated progress bars).
 - **Auto-refreshes** every 60 seconds; refresh on demand with the ↻ button.
+- **Auto-updates**: checks GitHub Releases on startup and every 6 hours, downloads the new
+  exe, swaps itself, and restarts. Switch to Manual in Settings if you'd rather it didn't,
+  and use "Check now" to update on demand.
 - **Start with Windows** toggle in the tray right-click menu.
 
 ## Download
 
-Grab `ClaudeTracker.exe` from the latest [Actions run](../../actions) artifact
-(`ClaudeTracker-win-x64`), or from [Releases](../../releases) once a version tag is pushed.
+Grab `ClaudeTracker.exe` from the [latest release](../../releases/latest).
 It's a self-contained single file — no .NET install required. Run it and look for the icon
-in the system tray (check the tray overflow ^ if you don't see it).
+in the system tray (check the tray overflow ^ if you don't see it). From then on it keeps
+itself up to date automatically.
+
+Development builds of every commit are also available as `ClaudeTracker-win-x64` artifacts
+on [Actions runs](../../actions).
 
 ## Build it yourself
 

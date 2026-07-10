@@ -735,6 +735,40 @@ public sealed class FlyoutForm : Form
             Controls.Add(choice);
             x += halfW + gap;
         }
+        y += S(30) + S(14);
+
+        var updLbl = MakeLabel("Updates", FontSmall, _t.TextSecondary, w, labelH);
+        updLbl.Location = new Point(pad, y);
+        Controls.Add(updLbl);
+        y += labelH + S(4);
+
+        x = pad;
+        foreach (var on in new[] { true, false })
+        {
+            var value = on;
+            var choice = MakeChoice(on ? "Automatic" : "Manual", _owner.Config.AutoUpdate == on, halfW, S(30));
+            choice.Location = new Point(x, y);
+            choice.Click += (s, e) =>
+            {
+                _owner.Config.AutoUpdate = value;
+                _owner.SaveConfig();
+                RebuildDeferred();
+            };
+            Controls.Add(choice);
+            x += halfW + gap;
+        }
+        y += S(30) + S(6);
+
+        string status = "v" + UpdateManager.CurrentVersion +
+            (UpdateManager.Status.Length > 0 ? " · " + UpdateManager.Status : "");
+        var verLbl = MakeLabel(status, FontTiny, _t.TextSecondary, w - S(110), S(30));
+        verLbl.Location = new Point(pad, y);
+        Controls.Add(verLbl);
+
+        var checkNow = MakeButtonLabel("Check now", FontTiny, S(104), S(30));
+        checkNow.Location = new Point(pad + w - S(104), y);
+        checkNow.Click += async (s, e) => await _owner.RunUpdateCheckAsync(manual: true);
+        Controls.Add(checkNow);
         y += S(30);
 
         return y + S(10);

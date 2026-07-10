@@ -10,6 +10,10 @@ public sealed class TrackerConfig
     /// <summary>Flyout entrance animation: "Slide", "Fade", or "Off".</summary>
     public string Entrance { get; set; } = "Slide";
     public bool AnimateBars { get; set; } = true;
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>GitHub token for update checks while the repo is private; not needed once public.</summary>
+    public string? GithubToken { get; set; }
 }
 
 public sealed class AccountConfig

@@ -15,6 +15,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private readonly NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly System.Windows.Forms.Timer _updateTimer;
     private readonly FlyoutForm _flyout;
     private readonly TrackerConfig _config;
     private readonly List<AccountState> _states = new();
@@ -57,7 +58,26 @@ public sealed class TrayApplicationContext : ApplicationContext
         _timer.Tick += async (s, e) => await RefreshAllAsync();
         _timer.Start();
 
+        _updateTimer = new System.Windows.Forms.Timer { Interval = 6 * 60 * 60 * 1000 };
+        _updateTimer.Tick += async (s, e) => await RunUpdateCheckAsync();
+        _updateTimer.Start();
+
         _ = RefreshAllAsync();
+        _ = InitialUpdateCheckAsync();
+    }
+
+    private async Task InitialUpdateCheckAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(15));
+        await RunUpdateCheckAsync();
+    }
+
+    public async Task RunUpdateCheckAsync(bool manual = false)
+    {
+        if (!_config.AutoUpdate && !manual) return;
+        bool restarting = await UpdateManager.CheckAndApplyAsync(_config.GithubToken, apply: true);
+        if (restarting) ExitApp();
+        else _flyout.RefreshView();
     }
 
     public void RequestRefresh() => _ = RefreshAllAsync();
@@ -236,6 +256,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private void ExitApp()
     {
         _timer.Stop();
+        _updateTimer.Stop();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _flyout.Dispose();
