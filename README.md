@@ -5,9 +5,15 @@ macOS menubar tools that show your 5-hour session usage and weekly cap at a glan
 
 - **Tray icon** shows your current session utilization (with a mini progress bar), color-shifting
   as you approach the limit.
-- **Click the icon** for a dark flyout with one card per account: session %, progress bar,
+- **Click the icon** for a flyout with one card per account: session %, progress bar,
   reset time, and weekly (7-day) usage — plus Opus weekly usage when relevant.
-- **Multiple accounts**: track several Claude accounts side by side.
+- **Expandable cards**: click a card to see every rate-limit window the API reports —
+  session (5h), weekly (7d), Opus weekly, and anything new Anthropic adds — each with its own
+  bar and reset time. With multiple accounts, a summary line shows your top usage across all of them.
+- **Multiple accounts**: track several Claude accounts side by side; add one with a browser
+  sign-in from the Manage tab.
+- **Settings tab**: four themes (Dark, Midnight, OLED, Light), accent color presets plus a
+  full color picker, and animation options (slide/fade flyout entrance, animated progress bars).
 - **Auto-refreshes** every 60 seconds; refresh on demand with the ↻ button.
 - **Start with Windows** toggle in the tray right-click menu.
 
@@ -39,7 +45,12 @@ on the machine at least once. Your default sign-in is picked up automatically on
 
 ### Adding more accounts
 
-Open the flyout → **Manage** → give the account a name and either:
+Open the flyout → **Manage** → give the account a name and click **Sign in with Claude**.
+Your browser opens Claude's authorization page — sign in to the account you want to track
+(use a private/incognito window if your browser is already logged in to your other account),
+approve access, then paste the code it shows back into the app and click **Complete sign-in**.
+
+Alternatively, you can add an account from credentials directly:
 
 - a **path** to another `.credentials.json` (e.g. from a second Claude Code config dir via
   `CLAUDE_CONFIG_DIR`), or

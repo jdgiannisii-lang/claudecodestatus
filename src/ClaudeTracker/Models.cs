@@ -4,6 +4,12 @@ public sealed class TrackerConfig
 {
     public List<AccountConfig> Accounts { get; set; } = new();
     public int PollSeconds { get; set; } = 60;
+    public string Theme { get; set; } = "Dark";
+    public string AccentColor { get; set; } = "#FFFFFF";
+
+    /// <summary>Flyout entrance animation: "Slide", "Fade", or "Off".</summary>
+    public string Entrance { get; set; } = "Slide";
+    public bool AnimateBars { get; set; } = true;
 }
 
 public sealed class AccountConfig
@@ -39,7 +45,17 @@ public sealed class UsageSnapshot
     public UsageWindow? Session { get; set; }
     public UsageWindow? Weekly { get; set; }
     public UsageWindow? WeeklyOpus { get; set; }
+
+    /// <summary>Any other rate-limit windows the usage endpoint reports, keyed by their API name.</summary>
+    public List<NamedWindow> Extra { get; set; } = new();
+
     public DateTimeOffset FetchedAt { get; set; }
+}
+
+public sealed class NamedWindow
+{
+    public required string Key { get; init; }
+    public required UsageWindow Window { get; init; }
 }
 
 public sealed class AccountState
@@ -56,4 +72,11 @@ public sealed class RefreshedTokens
     public required string AccessToken { get; init; }
     public string? RefreshToken { get; init; }
     public long ExpiresAtUnixMs { get; init; }
+}
+
+public sealed class AuthorizeRequest
+{
+    public required string Url { get; init; }
+    public required string Verifier { get; init; }
+    public required string State { get; init; }
 }

@@ -3,6 +3,7 @@ using System.Drawing.Text;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 namespace ClaudeTracker;
@@ -21,6 +22,13 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     public IReadOnlyList<AccountState> States => _states;
     public DateTimeOffset? LastUpdated { get; private set; }
+    public TrackerConfig Config => _config;
+
+    public void SaveConfig()
+    {
+        CredentialStore.Save(_config);
+        UpdateIcon();
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr handle);
@@ -79,6 +87,31 @@ public sealed class TrayApplicationContext : ApplicationContext
             acct.CredentialsPath = path;
         }
 
+        _config.Accounts.Add(acct);
+        CredentialStore.Save(_config);
+        _states.Add(new AccountState(acct));
+        _ = RefreshAllAsync();
+        return null;
+    }
+
+    public string? AddAccountFromTokens(string name, RefreshedTokens tokens)
+    {
+        name = name.Trim();
+        if (name.Length == 0) name = "Account " + (_config.Accounts.Count + 1);
+        if (_config.Accounts.Any(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            return "That name is already in use.";
+
+        var credsJson = new JsonObject
+        {
+            ["claudeAiOauth"] = new JsonObject
+            {
+                ["accessToken"] = tokens.AccessToken,
+                ["refreshToken"] = tokens.RefreshToken,
+                ["expiresAt"] = tokens.ExpiresAtUnixMs,
+            },
+        };
+
+        var acct = new AccountConfig { Name = name, CredentialsJson = credsJson.ToJsonString() };
         _config.Accounts.Add(acct);
         CredentialStore.Save(_config);
         _states.Add(new AccountState(acct));
@@ -218,12 +251,16 @@ public sealed class TrayApplicationContext : ApplicationContext
                 best = Math.Max(best, st.Snapshot.Session.Utilization);
         }
 
+        Color accent = Color.White;
+        try { accent = ColorTranslator.FromHtml(_config.AccentColor); }
+        catch { }
+
         Color severity = best switch
         {
             < 0 => Color.FromArgb(152, 152, 157),
             >= 90 => Color.FromArgb(255, 69, 58),
             >= 70 => Color.FromArgb(255, 159, 10),
-            _ => Color.White,
+            _ => accent,
         };
 
         using var bmp = new Bitmap(32, 32);
