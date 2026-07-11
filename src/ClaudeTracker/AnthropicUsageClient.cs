@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -33,10 +34,15 @@ public static class AnthropicUsageClient
         req.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
 
         using var resp = await Http.SendAsync(req);
-        var body = await resp.Content.ReadAsStringAsync();
+        if (resp.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            var retryAt = RateLimitPolicy.GetRetryAt(resp.Headers.RetryAfter, DateTimeOffset.UtcNow);
+            throw new UsageRateLimitException(retryAt);
+        }
         if (!resp.IsSuccessStatusCode)
             throw new HttpRequestException($"Usage request failed (HTTP {(int)resp.StatusCode})", null, resp.StatusCode);
 
+        var body = await resp.Content.ReadAsStringAsync();
         return ParseUsage(body);
     }
 
@@ -173,5 +179,38 @@ public static class AnthropicUsageClient
     {
         try { return obj?[key]?.GetValue<double>(); }
         catch { return null; }
+    }
+}
+
+public sealed class UsageRateLimitException : HttpRequestException
+{
+    public DateTimeOffset RetryAt { get; }
+
+    public UsageRateLimitException(DateTimeOffset retryAt)
+        : base("Anthropic usage rate limit reached", null, HttpStatusCode.TooManyRequests)
+    {
+        RetryAt = retryAt;
+    }
+}
+
+public static class RateLimitPolicy
+{
+    private static readonly TimeSpan DefaultDelay = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan MinimumDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan MaximumDelay = TimeSpan.FromMinutes(15);
+
+    public static DateTimeOffset GetRetryAt(RetryConditionHeaderValue? retryAfter, DateTimeOffset now)
+    {
+        DateTimeOffset candidate;
+        if (retryAfter?.Date is DateTimeOffset date)
+            candidate = date;
+        else if (retryAfter?.Delta is TimeSpan delta)
+            candidate = now.Add(delta);
+        else
+            candidate = now.Add(DefaultDelay);
+
+        if (candidate < now.Add(MinimumDelay)) return now.Add(MinimumDelay);
+        if (candidate > now.Add(MaximumDelay)) return now.Add(MaximumDelay);
+        return candidate;
     }
 }

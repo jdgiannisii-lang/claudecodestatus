@@ -84,6 +84,7 @@ public sealed class AccountState
     public AccountConfig Config { get; }
     public UsageSnapshot? Snapshot { get; set; }
     public string? Error { get; set; }
+    public DateTimeOffset? RateLimitRetryAt { get; set; }
 
     public AccountState(AccountConfig config) => Config = config;
 }
