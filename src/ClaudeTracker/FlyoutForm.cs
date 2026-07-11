@@ -18,8 +18,6 @@ public sealed class FlyoutForm : Form
     private static readonly Font FontTab = MakeMonoFont(10f);
     private static readonly Font FontInput = MakeMonoFont(9.5f);
 
-    private static readonly Color Danger = Color.FromArgb(255, 69, 58);
-
     private static readonly Color[] AccentPresets =
     {
         Color.White,
@@ -48,6 +46,7 @@ public sealed class FlyoutForm : Form
     private TextBox? _codeBox;
     private Label? _manageError;
     private AuthorizeRequest? _pendingAuth;
+    private string? _authStatus;
 
     public DateTimeOffset? HiddenAt { get; private set; }
 
@@ -64,7 +63,7 @@ public sealed class FlyoutForm : Form
         AutoScaleMode = AutoScaleMode.None;
         BackColor = _t.Bg;
         ForeColor = _t.TextPrimary;
-        Width = 380;
+        Width = 400;
         Height = 200;
         KeyPreview = true;
         KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) HideFlyout(); };
@@ -206,8 +205,8 @@ public sealed class FlyoutForm : Form
         _codeBox = null;
         _manageError = null;
 
-        Width = S(380);
-        int pad = S(18);
+        Width = S(400);
+        int pad = S(_owner.Config.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase) ? 12 : 16);
         int y = pad;
 
         var title = MakeLabel("Claude Tracker", FontTitle, _t.TextPrimary, Width - pad * 2 - S(40), S(26));
@@ -273,7 +272,7 @@ public sealed class FlyoutForm : Form
 
     private int BuildTabs(int y)
     {
-        int tabW = S(94), tabH = S(28);
+        int tabW = S(96), tabH = S(_owner.Config.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase) ? 32 : 36);
         int pillW = tabW * 3 + S(8), pillH = tabH + S(6);
         var pill = new Panel { Width = pillW, Height = pillH, BackColor = _t.PillBg };
         pill.Location = new Point((Width - pillW) / 2, y);
@@ -364,7 +363,10 @@ public sealed class FlyoutForm : Form
 
         var close = MakeButtonLabel("✕", FontSmall, S(24), S(24));
         close.Location = new Point(closeX, y);
-        close.Click += (s, e) => _owner.RemoveAccount(st);
+        close.ForeColor = _t.Danger;
+        close.MouseEnter += (s, e) => close.BackColor = _t.DangerBg;
+        close.MouseLeave += (s, e) => close.BackColor = _t.ControlBg;
+        close.Click += (s, e) => ConfirmRemoveAccount(st);
         card.Controls.Add(close);
 
         y += rowH + S(10);
@@ -457,7 +459,7 @@ public sealed class FlyoutForm : Form
             Height = height,
             BackColor = parent.BackColor,
             Track = _t.Track,
-            Fill = frac >= 0.9 ? Danger : frac >= 0.7 ? _t.Warn : _accent,
+            Fill = frac >= 0.9 ? _t.Danger : frac >= 0.7 ? _t.Warn : _accent,
             Fraction = animate ? start : frac,
             Target = frac,
             Location = location,
@@ -473,8 +475,31 @@ public sealed class FlyoutForm : Form
         RebuildDeferred();
     }
 
+    private void ConfirmRemoveAccount(AccountState state)
+    {
+        _dialogOpen = true;
+        try
+        {
+            var result = MessageBox.Show(
+                this,
+                $"Are you sure you want to remove ‘{state.Config.Name}’ from Claude Tracker?\n\nThis only removes the account from the tracker; its Claude credentials file will not be deleted.",
+                "Remove account?",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result == DialogResult.Yes)
+                _owner.RemoveAccount(state);
+        }
+        finally
+        {
+            _dialogOpen = false;
+            Activate();
+        }
+    }
+
     private Color SeverityColor(double pct) =>
-        pct >= 90 ? Danger : pct >= 70 ? _t.Warn : _t.TextPrimary;
+        pct >= 90 ? _t.Danger : pct >= 70 ? _t.Warn : _t.TextPrimary;
 
     private static List<(string Label, string Key, UsageWindow Window)> EnumerateWindows(UsageSnapshot s)
     {
@@ -515,20 +540,41 @@ public sealed class FlyoutForm : Form
         Controls.Add(_nameBox);
         y += _nameBox.Height + S(12);
 
-        var signIn = MakeButtonLabel("Sign in with Claude", FontTab, w, S(34));
+        var signIn = MakeButtonLabel("Sign in with Claude", FontTab, w, S(36));
         signIn.Location = new Point(pad, y);
         signIn.Click += (s, e) => StartSignIn();
         Controls.Add(signIn);
-        y += S(34) + S(10);
+        y += S(36) + S(10);
+
+        var hostedHint = MakeLabel("You'll sign in on claude.ai in your browser. Claude Tracker never asks for your Anthropic password.", FontSmall, _t.TextSecondary, w, S(36));
+        hostedHint.Location = new Point(pad, y);
+        Controls.Add(hostedHint);
+        y += S(36) + S(8);
 
         if (_pendingAuth != null)
         {
             var authHint = MakeLabel(
-                "Browser opened. Sign in to the account you want to track (use a private window for a second account), approve access, then paste the code shown:",
-                FontSmall, _t.TextSecondary, w, S(70));
+                _authStatus ?? "Browser opened. Sign in on claude.ai, approve access, then paste the completion code shown there.",
+                FontSmall, _t.TextSecondary, w, S(48));
             authHint.Location = new Point(pad, y);
             Controls.Add(authHint);
-            y += S(70) + S(4);
+            y += S(48) + S(6);
+
+            int recoveryW = (w - S(8)) / 2;
+            var reopen = MakeButtonLabel("Open sign-in again", FontTiny, recoveryW, S(32));
+            reopen.Location = new Point(pad, y);
+            reopen.Click += (s, e) => OpenPendingSignIn();
+            Controls.Add(reopen);
+            var copy = MakeButtonLabel("Copy authorization URL", FontTiny, recoveryW, S(32));
+            copy.Location = new Point(pad + recoveryW + S(8), y);
+            copy.Click += (s, e) => { if (_pendingAuth != null) Clipboard.SetText(_pendingAuth.Url); };
+            Controls.Add(copy);
+            y += S(32) + S(8);
+
+            var codeLabel = MakeLabel("Paste the completion code (code#state)", FontSmall, _t.TextSecondary, w, labelH);
+            codeLabel.Location = new Point(pad, y);
+            Controls.Add(codeLabel);
+            y += labelH + S(2);
 
             _codeBox = MakeTextBox(w, false);
             _codeBox.Location = new Point(pad, y);
@@ -542,7 +588,7 @@ public sealed class FlyoutForm : Form
             y += S(34) + S(10);
         }
 
-        var credsHint = MakeLabel("Or: path to a .credentials.json, or paste its JSON", FontSmall, _t.TextSecondary, w, labelH);
+        var credsHint = MakeLabel("Or use a Claude Code credentials file or JSON", FontSmall, _t.TextSecondary, w, labelH);
         credsHint.Location = new Point(pad, y);
         Controls.Add(credsHint);
         y += labelH + S(2);
@@ -569,13 +615,21 @@ public sealed class FlyoutForm : Form
     private void StartSignIn()
     {
         _pendingAuth = AnthropicUsageClient.CreateAuthorizeRequest();
+        _authStatus = null;
+        OpenPendingSignIn();
+    }
+
+    private void OpenPendingSignIn()
+    {
+        if (_pendingAuth == null) return;
         try
         {
             Process.Start(new ProcessStartInfo(_pendingAuth.Url) { UseShellExecute = true });
+            _authStatus = "Browser opened. Sign in on claude.ai, approve access, then paste the completion code shown there.";
         }
         catch
         {
-            // Browser launch failed; the paste box still appears and the user can retry.
+            _authStatus = "The browser did not open. Use Open sign-in again or copy the authorization URL.";
         }
         RebuildDeferred();
     }
@@ -591,7 +645,19 @@ public sealed class FlyoutForm : Form
         string pasted = codeBox.Text.Trim();
         if (pasted.Length == 0)
         {
-            errLabel.Text = "Paste the code from the browser first.";
+            errLabel.Text = "Paste the completion code from the browser first.";
+            return;
+        }
+
+        var completion = OAuthCompletionParser.Parse(pasted);
+        if (!completion.HasCode)
+        {
+            errLabel.Text = "Paste the completion code from the browser first.";
+            return;
+        }
+        if (!OAuthCompletionParser.MatchesPendingState(completion, auth.State))
+        {
+            errLabel.Text = "That completion code does not match this sign-in attempt. Start sign-in again.";
             return;
         }
 
@@ -602,7 +668,7 @@ public sealed class FlyoutForm : Form
             if (errLabel.IsDisposed) return;
             if (tokens == null)
             {
-                errLabel.Text = "Sign-in failed. Click Sign in with Claude and try again.";
+                errLabel.Text = "Sign-in failed. Check the code and try again.";
                 return;
             }
 
@@ -618,9 +684,9 @@ public sealed class FlyoutForm : Form
             Rebuild();
             PositionNearTray();
         }
-        catch (Exception ex)
+        catch
         {
-            if (!errLabel.IsDisposed) errLabel.Text = "Sign-in failed: " + ex.Message;
+            if (!errLabel.IsDisposed) errLabel.Text = "Sign-in failed. Check the code and try again.";
         }
     }
 
@@ -651,13 +717,14 @@ public sealed class FlyoutForm : Form
         Controls.Add(themeLbl);
         y += labelH + S(4);
 
-        int themeW = (w - gap * (Theme.All.Length - 1)) / Theme.All.Length;
+        int themeW = (w - gap * 2) / 3;
         int x = pad;
-        foreach (var theme in Theme.All)
+        for (int i = 0; i < Theme.All.Length; i++)
         {
+            var theme = Theme.All[i];
             var name = theme.Name;
             var choice = MakeChoice(name, name.Equals(_owner.Config.Theme, StringComparison.OrdinalIgnoreCase), themeW, S(30));
-            choice.Location = new Point(x, y);
+            choice.Location = new Point(pad + (i % 3) * (themeW + gap), y + (i / 3) * (S(30) + gap));
             choice.Click += (s, e) =>
             {
                 _owner.Config.Theme = name;
@@ -665,9 +732,8 @@ public sealed class FlyoutForm : Form
                 RebuildDeferred();
             };
             Controls.Add(choice);
-            x += themeW + gap;
         }
-        y += S(30) + S(14);
+        y += S(68) + S(14);
 
         var accentLbl = MakeLabel("Accent color", FontSmall, _t.TextSecondary, w, labelH);
         accentLbl.Location = new Point(pad, y);
@@ -691,6 +757,23 @@ public sealed class FlyoutForm : Form
         Controls.Add(custom);
         y += S(28) + S(14);
 
+        var densityLbl = MakeLabel("Density", FontSmall, _t.TextSecondary, w, labelH);
+        densityLbl.Location = new Point(pad, y);
+        Controls.Add(densityLbl);
+        y += labelH + S(4);
+        int densityW = (w - gap) / 2;
+        x = pad;
+        foreach (var density in new[] { "Comfortable", "Compact" })
+        {
+            var value = density;
+            var choice = MakeChoice(density, density.Equals(_owner.Config.Density, StringComparison.OrdinalIgnoreCase), densityW, S(30));
+            choice.Location = new Point(x, y);
+            choice.Click += (s, e) => { _owner.Config.Density = value; _owner.SaveConfig(); RebuildDeferred(); };
+            Controls.Add(choice);
+            x += densityW + gap;
+        }
+        y += S(30) + S(14);
+
         var animLbl = MakeLabel("Flyout animation", FontSmall, _t.TextSecondary, w, labelH);
         animLbl.Location = new Point(pad, y);
         Controls.Add(animLbl);
@@ -713,6 +796,27 @@ public sealed class FlyoutForm : Form
             x += choiceW + gap;
         }
         y += S(30) + S(14);
+
+        var trayLbl = MakeLabel("Tray treatment", FontSmall, _t.TextSecondary, w, labelH);
+        trayLbl.Location = new Point(pad, y);
+        Controls.Add(trayLbl);
+        y += labelH + S(4);
+        int trayW = (w - gap * 2) / 3;
+        x = pad;
+        foreach (var treatment in new[] { "Static", "Pulse", "RGB" })
+        {
+            var value = treatment;
+            var choice = MakeChoice(treatment, treatment.Equals(_owner.Config.TrayTreatment, StringComparison.OrdinalIgnoreCase), trayW, S(30));
+            choice.Location = new Point(x, y);
+            choice.Click += (s, e) => { _owner.Config.TrayTreatment = value; _owner.SaveConfig(); RebuildDeferred(); };
+            Controls.Add(choice);
+            x += trayW + gap;
+        }
+        y += S(30) + S(4);
+        var trayHint = MakeLabel("Warning and danger colors always stay visible", FontTiny, _t.TextSecondary, w, labelH);
+        trayHint.Location = new Point(pad, y);
+        Controls.Add(trayHint);
+        y += labelH + S(10);
 
         var barsLbl = MakeLabel("Progress bar animation", FontSmall, _t.TextSecondary, w, labelH);
         barsLbl.Location = new Point(pad, y);
@@ -857,7 +961,7 @@ public sealed class FlyoutForm : Form
             Height = height,
             TextAlign = ContentAlignment.MiddleCenter,
             Cursor = Cursors.Hand,
-            ForeColor = selected ? _t.TextPrimary : _t.TextSecondary,
+            ForeColor = selected ? _t.Focus : _t.TextSecondary,
             BackColor = selected ? _t.PillSelected : _t.ControlBg,
         };
         l.Region = new Region(RoundedRect(new Rectangle(0, 0, width, height), Math.Min(height / 2, S(15))));
