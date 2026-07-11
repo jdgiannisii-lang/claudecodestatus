@@ -71,22 +71,14 @@ public static class AnthropicUsageClient
 
     public static async Task<RefreshedTokens?> ExchangeCodeAsync(string pastedCode, string fallbackState, string verifier)
     {
-        // The callback page shows the code as "<code>#<state>".
-        string code = pastedCode.Trim();
-        string state = fallbackState;
-        int hash = code.IndexOf('#');
-        if (hash >= 0)
-        {
-            state = code[(hash + 1)..];
-            code = code[..hash];
-        }
-        if (code.Length == 0) return null;
+        var completion = OAuthCompletionParser.Parse(pastedCode);
+        if (!completion.HasCode || !OAuthCompletionParser.MatchesPendingState(completion, fallbackState)) return null;
 
         var payload = new JsonObject
         {
             ["grant_type"] = "authorization_code",
-            ["code"] = code,
-            ["state"] = state,
+            ["code"] = completion.Code,
+            ["state"] = completion.State ?? fallbackState,
             ["client_id"] = ClientId,
             ["redirect_uri"] = RedirectUri,
             ["code_verifier"] = verifier,

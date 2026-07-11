@@ -1,0 +1,62 @@
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+
+namespace ClaudeTracker;
+
+public static class TrayIconRenderer
+{
+    public static Icon Render(double usage, Color accent, string treatment, long elapsedMs)
+    {
+        using var bitmap = new Bitmap(64, 64);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            var color = ColorHelpers.TrayColor(usage, accent, treatment, elapsedMs);
+            var text = usage < 0 ? "--" : Math.Round(Math.Clamp(usage, 0, 100)).ToString();
+            var fontSize = text.Length >= 3 ? 20f : text == "--" ? 22f : 24f;
+            using var font = new Font("Segoe UI Semibold", fontSize, FontStyle.Regular, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(color);
+            using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            graphics.DrawString(text, font, brush, new RectangleF(4, 7, 56, 38), format);
+            using var track = new SolidBrush(Color.FromArgb(120, 120, 125));
+            using var trackPath = RoundedRect(new Rectangle(6, 52, 52, 6), 3);
+            graphics.FillPath(track, trackPath);
+            if (usage >= 0)
+            {
+                var fill = Math.Max(3, (int)Math.Round(Math.Clamp(usage, 0, 100) * 52 / 100d));
+                using var fillPath = RoundedRect(new Rectangle(6, 52, fill, 6), 3);
+                graphics.FillPath(brush, fillPath);
+            }
+        }
+        var handle = bitmap.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(handle);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            NativeIcon.DestroyIcon(handle);
+        }
+    }
+
+    private static GraphicsPath RoundedRect(Rectangle rect, int radius)
+    {
+        var path = new GraphicsPath();
+        radius = Math.Min(radius, Math.Min(rect.Width, rect.Height) / 2);
+        var diameter = Math.Max(2, radius * 2);
+        path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
+        path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
+        path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
+
+internal static class NativeIcon
+{
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool DestroyIcon(IntPtr handle);
+}

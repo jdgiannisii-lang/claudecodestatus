@@ -1,5 +1,3 @@
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -16,6 +14,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly System.Windows.Forms.Timer _updateTimer;
+    private readonly System.Windows.Forms.Timer _trayAnimationTimer;
     private readonly FlyoutForm _flyout;
     private readonly TrackerConfig _config;
     private readonly List<AccountState> _states = new();
@@ -27,12 +26,11 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     public void SaveConfig()
     {
+        TrackerConfigDefaults.Apply(_config);
         CredentialStore.Save(_config);
+        UpdateTrayAnimationTimer();
         UpdateIcon();
     }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr handle);
 
     public TrayApplicationContext()
     {
@@ -57,6 +55,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         _timer = new System.Windows.Forms.Timer { Interval = Math.Max(15, _config.PollSeconds) * 1000 };
         _timer.Tick += async (s, e) => await RefreshAllAsync();
         _timer.Start();
+
+        _trayAnimationTimer = new System.Windows.Forms.Timer { Interval = 80 };
+        _trayAnimationTimer.Tick += (s, e) => UpdateIcon();
+        UpdateTrayAnimationTimer();
 
         _updateTimer = new System.Windows.Forms.Timer { Interval = 6 * 60 * 60 * 1000 };
         _updateTimer.Tick += async (s, e) => await RunUpdateCheckAsync();
@@ -257,6 +259,8 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         _timer.Stop();
         _updateTimer.Stop();
+        _trayAnimationTimer.Stop();
+        _trayAnimationTimer.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _flyout.Dispose();
@@ -272,55 +276,19 @@ public sealed class TrayApplicationContext : ApplicationContext
                 best = Math.Max(best, st.Snapshot.Session.Utilization);
         }
 
-        Color accent = Color.White;
-        try { accent = ColorTranslator.FromHtml(_config.AccentColor); }
-        catch { }
-
-        Color severity = best switch
-        {
-            < 0 => Color.FromArgb(152, 152, 157),
-            >= 90 => Color.FromArgb(255, 69, 58),
-            >= 70 => Color.FromArgb(255, 159, 10),
-            _ => accent,
-        };
-
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-
-            string text = best < 0 ? "--" : Math.Round(best).ToString();
-            float fontSize = text.Length >= 3 ? 11f : 14f;
-            using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var textBrush = new SolidBrush(best >= 70 ? severity : Color.White);
-            var size = g.MeasureString(text, font);
-            g.DrawString(text, font, textBrush, (32 - size.Width) / 2f, (25 - size.Height) / 2f);
-
-            using var trackBrush = new SolidBrush(Color.FromArgb(90, 90, 95));
-            g.FillRectangle(trackBrush, 4, 26, 24, 4);
-            if (best >= 0)
-            {
-                int fill = (int)Math.Max(2, 24 * Math.Clamp(best, 0, 100) / 100.0);
-                using var fillBrush = new SolidBrush(severity);
-                g.FillRectangle(fillBrush, 4, 26, fill, 4);
-            }
-        }
-
-        IntPtr hIcon = bmp.GetHicon();
-        try
-        {
-            using var handleIcon = Icon.FromHandle(hIcon);
-            var old = _trayIcon.Icon;
-            _trayIcon.Icon = (Icon)handleIcon.Clone();
-            old?.Dispose();
-        }
-        finally
-        {
-            DestroyIcon(hIcon);
-        }
+        var accent = ColorTranslator.FromHtml(ColorHelpers.ParseOpaqueHtml(_config.AccentColor, Color.White));
+        var icon = TrayIconRenderer.Render(best, accent, _config.TrayTreatment, Environment.TickCount64);
+        var old = _trayIcon.Icon;
+        _trayIcon.Icon = icon;
+        old?.Dispose();
 
         _trayIcon.Text = Shorten(BuildTooltip(), 120);
+    }
+
+    private void UpdateTrayAnimationTimer()
+    {
+        bool animate = _config.TrayTreatment.Equals("Pulse", StringComparison.OrdinalIgnoreCase) || _config.TrayTreatment.Equals("RGB", StringComparison.OrdinalIgnoreCase);
+        if (animate && _trayIcon.Visible) _trayAnimationTimer.Start(); else _trayAnimationTimer.Stop();
     }
 
     private string BuildTooltip()

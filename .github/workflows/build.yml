@@ -17,6 +17,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Restore and test
+        run: |
+          dotnet restore tests/ClaudeTracker.Tests/ClaudeTracker.Tests.csproj
+          dotnet test tests/ClaudeTracker.Tests/ClaudeTracker.Tests.csproj -c Release --no-restore
+
       - name: Publish self-contained exe
         run: >
           dotnet publish src/ClaudeTracker/ClaudeTracker.csproj
@@ -42,6 +47,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Restore and test
+        run: |
+          dotnet restore tests/ClaudeTracker.Tests/ClaudeTracker.Tests.csproj
+          dotnet test tests/ClaudeTracker.Tests/ClaudeTracker.Tests.csproj -c Release --no-restore
 
       - name: Publish self-contained exe
         run: >

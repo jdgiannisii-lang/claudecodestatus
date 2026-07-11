@@ -22,7 +22,11 @@ public static class CredentialStore
             if (File.Exists(ConfigPath))
             {
                 var cfg = JsonSerializer.Deserialize<TrackerConfig>(File.ReadAllText(ConfigPath));
-                if (cfg != null) return cfg;
+                if (cfg != null)
+                {
+                    TrackerConfigDefaults.Apply(cfg);
+                    return cfg;
+                }
             }
         }
         catch
@@ -31,6 +35,7 @@ public static class CredentialStore
         }
 
         var fresh = new TrackerConfig();
+        TrackerConfigDefaults.Apply(fresh);
         if (File.Exists(DefaultClaudeCredentialsPath))
         {
             fresh.Accounts.Add(new AccountConfig
