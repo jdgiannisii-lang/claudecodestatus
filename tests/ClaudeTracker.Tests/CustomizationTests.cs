@@ -1,5 +1,7 @@
 using ClaudeTracker;
+using System;
 using System.Drawing;
+using System.Net.Http.Headers;
 using Xunit;
 
 namespace ClaudeTracker.Tests;
@@ -64,5 +66,17 @@ public sealed class CustomizationTests
         using var bitmap = icon.ToBitmap();
         Assert.Equal(64, bitmap.Width);
         Assert.Equal(64, bitmap.Height);
+    }
+
+    [Fact]
+    public void Rate_limit_policy_honors_retry_after_with_safe_bounds()
+    {
+        var now = new DateTimeOffset(2026, 7, 11, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(now.AddSeconds(90), RateLimitPolicy.GetRetryAt(
+            new RetryConditionHeaderValue(TimeSpan.FromSeconds(90)), now));
+        Assert.Equal(now.AddMinutes(2), RateLimitPolicy.GetRetryAt(null, now));
+        Assert.Equal(now.AddMinutes(15), RateLimitPolicy.GetRetryAt(
+            new RetryConditionHeaderValue(TimeSpan.FromHours(1)), now));
     }
 }

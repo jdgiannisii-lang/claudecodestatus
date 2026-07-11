@@ -158,9 +158,20 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             foreach (var st in _states.ToList())
             {
+                if (st.RateLimitRetryAt is DateTimeOffset retryAt && retryAt > DateTimeOffset.UtcNow)
+                {
+                    st.Error = FormatRateLimitStatus(retryAt, st.Snapshot != null);
+                    continue;
+                }
+
                 try
                 {
                     await RefreshAccountAsync(st);
+                }
+                catch (UsageRateLimitException ex)
+                {
+                    st.RateLimitRetryAt = ex.RetryAt;
+                    st.Error = FormatRateLimitStatus(ex.RetryAt, st.Snapshot != null);
                 }
                 catch (Exception ex)
                 {
@@ -195,6 +206,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             st.Snapshot = await AnthropicUsageClient.FetchUsageAsync(creds.AccessToken!);
             st.Error = null;
+            st.RateLimitRetryAt = null;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized && creds.RefreshToken != null)
         {
@@ -207,7 +219,16 @@ public sealed class TrayApplicationContext : ApplicationContext
             }
             st.Snapshot = await AnthropicUsageClient.FetchUsageAsync(refreshed.AccessToken!);
             st.Error = null;
+            st.RateLimitRetryAt = null;
         }
+    }
+
+    private static string FormatRateLimitStatus(DateTimeOffset retryAt, bool hasSnapshot)
+    {
+        var retryTime = retryAt.ToLocalTime().ToString("h:mm tt");
+        return hasSnapshot
+            ? $"Rate limited · last data shown · retry {retryTime}"
+            : $"Rate limited · retry {retryTime}";
     }
 
     private async Task<OauthCredentials?> TryRefreshAsync(AccountConfig acct, OauthCredentials creds)
