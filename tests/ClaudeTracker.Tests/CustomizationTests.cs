@@ -53,6 +53,8 @@ public sealed class CustomizationTests
         Assert.Equal(Color.FromArgb(255, 69, 58), ColorHelpers.TrayColor(90, accent, "RGB", 100));
         Assert.Equal(Color.FromArgb(255, 159, 10), ColorHelpers.TrayColor(70, accent, "Pulse", 100));
         Assert.Equal(ColorHelpers.TrayColor(20, accent, "RGB", 420), ColorHelpers.TrayColor(20, accent, "RGB", 420));
+        Assert.Equal(ColorHelpers.TrayColor(20, accent, "RGB", 0), ColorHelpers.TrayColor(20, accent, "RGB", 10_000));
+        Assert.NotEqual(ColorHelpers.TrayColor(20, accent, "RGB", 0), ColorHelpers.TrayColor(20, accent, "RGB", 2_500));
     }
 
     [Fact]

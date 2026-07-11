@@ -2,6 +2,8 @@ namespace ClaudeTracker;
 
 public static class ColorHelpers
 {
+    private const long RgbCycleMs = 10_000;
+
     public static string ParseOpaqueHtml(string? value, Color fallback)
     {
         try
@@ -28,7 +30,7 @@ public static class ColorHelpers
             return Color.FromArgb((int)(accent.R * scale), (int)(accent.G * scale), (int)(accent.B * scale));
         }
         if (string.Equals(treatment, "RGB", StringComparison.OrdinalIgnoreCase))
-            return ColorFromHue((elapsedMs % 1500) * 360d / 1500d);
+            return ColorFromHue((elapsedMs % RgbCycleMs) * 360d / RgbCycleMs);
 
         return accent;
     }
