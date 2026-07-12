@@ -37,13 +37,14 @@ public sealed class TrayApplicationContext : ApplicationContext
         _config = CredentialStore.Load();
         foreach (var acct in _config.Accounts)
             _states.Add(new AccountState(acct));
+        EnsureCodexState();
 
         _flyout = new FlyoutForm(this);
 
         _trayIcon = new NotifyIcon
         {
             Visible = true,
-            Text = "Claude Tracker",
+            Text = "Claude + Codex Tracker",
             ContextMenuStrip = BuildMenu(),
         };
         _trayIcon.MouseClick += (s, e) =>
@@ -143,6 +144,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     public void RemoveAccount(AccountState state)
     {
+        if (!state.CanRemove) return;
         _config.Accounts.Remove(state.Config);
         CredentialStore.Save(_config);
         _states.Remove(state);
@@ -156,6 +158,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _refreshing = true;
         try
         {
+            EnsureCodexState();
             foreach (var st in _states.ToList())
             {
                 if (st.RateLimitRetryAt is DateTimeOffset retryAt && retryAt > DateTimeOffset.UtcNow)
@@ -191,6 +194,12 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private async Task RefreshAccountAsync(AccountState st)
     {
+        if (st.Provider == UsageProvider.Codex)
+        {
+            await RefreshCodexAccountAsync(st);
+            return;
+        }
+
         var creds = CredentialStore.ReadCredentials(st.Config);
         if (creds?.AccessToken == null)
         {
@@ -220,6 +229,39 @@ public sealed class TrayApplicationContext : ApplicationContext
             st.Snapshot = await AnthropicUsageClient.FetchUsageAsync(refreshed.AccessToken!);
             st.Error = null;
             st.RateLimitRetryAt = null;
+        }
+    }
+
+    private async Task RefreshCodexAccountAsync(AccountState state)
+    {
+        var credentials = CodexUsageClient.ReadCredentials();
+        if (credentials == null)
+        {
+            state.Snapshot = null;
+            state.Error = "Codex sign-in not found. Open Codex and sign in first.";
+            return;
+        }
+
+        try
+        {
+            state.Snapshot = await CodexUsageClient.FetchUsageAsync(credentials);
+            state.Error = null;
+            state.RateLimitRetryAt = null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            state.Snapshot = null;
+            state.Error = "Codex sign-in expired. Open Codex to refresh it.";
+        }
+    }
+
+    private void EnsureCodexState()
+    {
+        if (CodexUsageClient.HasLocalAuth() && _states.All(state => state.Provider != UsageProvider.Codex))
+        {
+            _states.Add(new AccountState(
+                new AccountConfig { Name = "Codex" },
+                UsageProvider.Codex));
         }
     }
 
@@ -314,7 +356,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private string BuildTooltip()
     {
-        if (_states.Count == 0) return "Claude Tracker — no accounts";
+        if (_states.Count == 0) return "Claude + Codex Tracker — no accounts";
         var parts = new List<string>();
         foreach (var st in _states)
         {
