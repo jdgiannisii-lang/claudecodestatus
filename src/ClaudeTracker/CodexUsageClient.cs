@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 
@@ -97,6 +98,7 @@ public static class CodexUsageClient
             Session = ReadWindow(rateLimit, "primary_window"),
             Weekly = ReadWindow(rateLimit, "secondary_window"),
             PlanLabel = Humanize(ReadString(root, "plan_type")),
+            ExtraUsage = ReadExtraUsage(root, rateLimit),
             FetchedAt = DateTimeOffset.Now,
         };
 
@@ -150,6 +152,18 @@ public static class CodexUsageClient
         return window;
     }
 
+    private static CodexExtraUsage ReadExtraUsage(JsonObject root, JsonObject rateLimit)
+    {
+        var credits = root["credits"] as JsonObject;
+        return new CodexExtraUsage
+        {
+            HasCredits = ReadBool(credits, "has_credits") ?? false,
+            Unlimited = ReadBool(credits, "unlimited") ?? false,
+            Balance = ReadDecimal(credits, "balance"),
+            IncludedLimitReached = ReadBool(rateLimit, "limit_reached") ?? false,
+        };
+    }
+
     private static JsonObject? DecodeJwtPayload(string? jwt)
     {
         if (string.IsNullOrWhiteSpace(jwt)) return null;
@@ -183,6 +197,24 @@ public static class CodexUsageClient
     {
         try { return obj?[key]?.GetValue<double>(); }
         catch { return null; }
+    }
+
+    private static decimal? ReadDecimal(JsonObject? obj, string key)
+    {
+        try
+        {
+            var value = obj?[key] as JsonValue;
+            if (value == null) return null;
+            if (value.TryGetValue<decimal>(out var number)) return number;
+            if (value.TryGetValue<string>(out var text) &&
+                decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+                return parsed;
+        }
+        catch
+        {
+            // Treat an unexpected balance shape as unavailable rather than failing the whole usage refresh.
+        }
+        return null;
     }
 
     private static int? ReadInt(JsonObject? obj, string key)

@@ -13,7 +13,8 @@ take on the macOS menubar tools that show session usage and weekly caps at a gla
 - **Multiple accounts**: track several Claude accounts side by side; add one with a browser
   sign-in from the Manage tab.
 - **Codex usage**: automatically reads your existing local Codex sign-in and shows its primary
-  and secondary usage windows alongside Claude without copying the token into tracker settings.
+  and secondary usage windows plus extra-usage credit balance/status alongside Claude, without
+  copying the token into tracker settings.
 - **Settings tab**: six themes (Dark, Midnight, OLED, Light, Forest, Rose), accent presets plus
   a full color picker, comfortable/compact density, flyout and progress animations, and tray effects.
 - **Auto-refreshes** every 60 seconds; refresh on demand with the ↻ button.
