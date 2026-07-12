@@ -108,4 +108,30 @@ public sealed class CustomizationTests
         Assert.Equal(18000, usage.Session.WindowSeconds);
         Assert.Equal(17, usage.Weekly!.Utilization);
     }
+
+    [Theory]
+    [InlineData("{\"has_credits\":true,\"unlimited\":false,\"balance\":\"12.6\"}", true, true, "13 credits")]
+    [InlineData("{\"has_credits\":true,\"unlimited\":false,\"balance\":\"12.6\"}", false, false, "13 credits")]
+    [InlineData("{\"has_credits\":true,\"unlimited\":true,\"balance\":\"not-a-number\"}", true, true, "Unlimited")]
+    [InlineData(null, true, false, "No credits")]
+    [InlineData("{\"has_credits\":false,\"unlimited\":false,\"balance\":\"99\"}", true, false, "99 credits")]
+    [InlineData("{\"has_credits\":true,\"unlimited\":false,\"balance\":\"not-a-number\"}", true, false, "No credits")]
+    [InlineData("{\"has_credits\":true,\"unlimited\":false,\"balance\":\"0\"}", true, false, "No credits")]
+    public void Codex_extra_usage_requires_a_reached_limit_and_usable_credits(
+        string creditsJson, bool limitReached, bool expectedInUse, string expectedBalance)
+    {
+        string credits = creditsJson == null ? "" : $", \"credits\": {creditsJson}";
+        var usage = CodexUsageClient.ParseUsage($$"""
+            {
+              "rate_limit": {
+                "limit_reached": {{limitReached.ToString().ToLowerInvariant()}},
+                "primary_window": { "used_percent": 0 }
+              }{{credits}}
+            }
+            """);
+
+        Assert.NotNull(usage.ExtraUsage);
+        Assert.Equal(expectedInUse, usage.ExtraUsage!.IsInUse);
+        Assert.Equal(expectedBalance, usage.ExtraUsage.BalanceLabel);
+    }
 }

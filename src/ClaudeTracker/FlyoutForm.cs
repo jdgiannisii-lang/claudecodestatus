@@ -420,6 +420,8 @@ public sealed class FlyoutForm : Form
                 card.Controls.Add(weekly);
                 y += lineH + S(4);
             }
+
+            y = AddCodexExtraUsageRow(card, st, y, w, pad, lineH);
         }
         else
         {
@@ -449,11 +451,27 @@ public sealed class FlyoutForm : Form
                 }
                 y += S(8);
             }
+
+            y = AddCodexExtraUsageRow(card, st, y, w, pad, lineH);
         }
 
         card.Height = y + pad - S(4);
         card.Region = new Region(RoundedRect(new Rectangle(0, 0, w, card.Height), S(14)));
         return card;
+    }
+
+    private int AddCodexExtraUsageRow(Panel card, AccountState state, int y, int width, int pad, int lineHeight)
+    {
+        if (state.Provider != UsageProvider.Codex || state.Snapshot?.ExtraUsage is not CodexExtraUsage extraUsage)
+            return y;
+
+        string status = extraUsage.IsInUse ? "In use" : "Not in use";
+        var row = MakeLabel($"Extra usage: {extraUsage.BalanceLabel} | {status}",
+            FontSmall, _t.TextSecondary, width - pad * 2, lineHeight);
+        row.Location = new Point(pad, y);
+        row.Click += (s, e) => ToggleExpand(state.Config.Name);
+        card.Controls.Add(row);
+        return y + lineHeight + S(4);
     }
 
     private void AddBar(Panel parent, string key, double frac, Point location, int width, int height)

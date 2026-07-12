@@ -69,10 +69,30 @@ public sealed class UsageSnapshot
     public UsageWindow? WeeklyOpus { get; set; }
     public string? PlanLabel { get; set; }
 
+    /// <summary>Codex pay-as-you-go credit state, when reported by the Codex usage endpoint.</summary>
+    public CodexExtraUsage? ExtraUsage { get; set; }
+
     /// <summary>Any other rate-limit windows the usage endpoint reports, keyed by their API name.</summary>
     public List<NamedWindow> Extra { get; set; } = new();
 
     public DateTimeOffset FetchedAt { get; set; }
+}
+
+public sealed class CodexExtraUsage
+{
+    public bool HasCredits { get; init; }
+    public bool Unlimited { get; init; }
+    public decimal? Balance { get; init; }
+    public bool IncludedLimitReached { get; init; }
+
+    public bool HasUsableCredits => HasCredits && (Unlimited || Balance is > 0);
+    public bool IsInUse => IncludedLimitReached && HasUsableCredits;
+
+    public string BalanceLabel => Unlimited
+        ? "Unlimited"
+        : Balance is > 0
+            ? $"{Math.Round(Balance.Value, 0, MidpointRounding.AwayFromZero):N0} credits"
+            : "No credits";
 }
 
 public sealed class NamedWindow
