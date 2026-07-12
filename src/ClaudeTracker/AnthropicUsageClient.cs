@@ -187,7 +187,7 @@ public sealed class UsageRateLimitException : HttpRequestException
     public DateTimeOffset RetryAt { get; }
 
     public UsageRateLimitException(DateTimeOffset retryAt)
-        : base("Anthropic usage rate limit reached", null, HttpStatusCode.TooManyRequests)
+        : base("Usage rate limit reached", null, HttpStatusCode.TooManyRequests)
     {
         RetryAt = retryAt;
     }

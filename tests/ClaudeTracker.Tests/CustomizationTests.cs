@@ -2,6 +2,7 @@ using ClaudeTracker;
 using System;
 using System.Drawing;
 using System.Net.Http.Headers;
+using System.Text;
 using Xunit;
 
 namespace ClaudeTracker.Tests;
@@ -78,5 +79,33 @@ public sealed class CustomizationTests
         Assert.Equal(now.AddMinutes(2), RateLimitPolicy.GetRetryAt(null, now));
         Assert.Equal(now.AddMinutes(15), RateLimitPolicy.GetRetryAt(
             new RetryConditionHeaderValue(TimeSpan.FromHours(1)), now));
+    }
+
+    [Fact]
+    public void Codex_credentials_and_usage_parse_without_persisting_real_tokens()
+    {
+        var claims = "{\"https://api.openai.com/auth\":{\"chatgpt_account_id\":\"account-synthetic\",\"chatgpt_account_is_fedramp\":false}}";
+        var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(claims)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var credentials = CodexUsageClient.ParseCredentials(
+            $"{{\"auth_mode\":\"chatgpt\",\"tokens\":{{\"access_token\":\"token-synthetic\",\"id_token\":\"header.{payload}.signature\"}}}}");
+
+        Assert.NotNull(credentials);
+        Assert.Equal("token-synthetic", credentials!.AccessToken);
+        Assert.Equal("account-synthetic", credentials.AccountId);
+
+        var usage = CodexUsageClient.ParseUsage("""
+            {
+              "plan_type": "plus",
+              "rate_limit": {
+                "primary_window": { "used_percent": 42, "limit_window_seconds": 18000, "reset_at": 1783843951 },
+                "secondary_window": { "used_percent": 17, "limit_window_seconds": 604800, "reset_at": 1784354957 }
+              }
+            }
+            """);
+
+        Assert.Equal("Plus", usage.PlanLabel);
+        Assert.Equal(42, usage.Session!.Utilization);
+        Assert.Equal(18000, usage.Session.WindowSeconds);
+        Assert.Equal(17, usage.Weekly!.Utilization);
     }
 }

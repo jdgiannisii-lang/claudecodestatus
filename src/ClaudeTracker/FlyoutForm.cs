@@ -209,7 +209,7 @@ public sealed class FlyoutForm : Form
         int pad = S(_owner.Config.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase) ? 12 : 16);
         int y = pad;
 
-        var title = MakeLabel("Claude Tracker", FontTitle, _t.TextPrimary, Width - pad * 2 - S(40), S(26));
+        var title = MakeLabel("Claude + Codex", FontTitle, _t.TextPrimary, Width - pad * 2 - S(40), S(26));
         title.Location = new Point(pad, y);
         Controls.Add(title);
 
@@ -338,10 +338,14 @@ public sealed class FlyoutForm : Form
         int rowH = S(24);
 
         int closeX = w - pad - S(24);
-        int chevX = closeX - S(6) - S(18);
+        int closeSlot = st.CanRemove ? S(30) : 0;
+        int chevX = w - pad - closeSlot - S(18);
         int pctX = chevX - S(4) - S(64);
 
-        var name = MakeLabel(acctName, FontCard, _t.TextPrimary, pctX - pad - S(4), rowH);
+        string accountTitle = st.Snapshot?.PlanLabel is string plan
+            ? $"{acctName} · {plan}"
+            : acctName;
+        var name = MakeLabel(accountTitle, FontCard, _t.TextPrimary, pctX - pad - S(4), rowH);
         name.Location = new Point(pad, y);
         name.Cursor = Cursors.Hand;
         name.Click += (s, e) => ToggleExpand(acctName);
@@ -361,13 +365,16 @@ public sealed class FlyoutForm : Form
         chev.Click += (s, e) => ToggleExpand(acctName);
         card.Controls.Add(chev);
 
-        var close = MakeButtonLabel("✕", FontSmall, S(24), S(24));
-        close.Location = new Point(closeX, y);
-        close.ForeColor = _t.Danger;
-        close.MouseEnter += (s, e) => close.BackColor = _t.DangerBg;
-        close.MouseLeave += (s, e) => close.BackColor = _t.ControlBg;
-        close.Click += (s, e) => ConfirmRemoveAccount(st);
-        card.Controls.Add(close);
+        if (st.CanRemove)
+        {
+            var close = MakeButtonLabel("✕", FontSmall, S(24), S(24));
+            close.Location = new Point(closeX, y);
+            close.ForeColor = _t.Danger;
+            close.MouseEnter += (s, e) => close.BackColor = _t.DangerBg;
+            close.MouseLeave += (s, e) => close.BackColor = _t.ControlBg;
+            close.Click += (s, e) => ConfirmRemoveAccount(st);
+            card.Controls.Add(close);
+        }
 
         y += rowH + S(10);
 
@@ -504,11 +511,20 @@ public sealed class FlyoutForm : Form
     private static List<(string Label, string Key, UsageWindow Window)> EnumerateWindows(UsageSnapshot s)
     {
         var list = new List<(string, string, UsageWindow)>();
-        if (s.Session != null) list.Add(("Session (5h)", "five_hour", s.Session));
-        if (s.Weekly != null) list.Add(("Weekly (7d)", "seven_day", s.Weekly));
+        if (s.Session != null) list.Add((WindowLabel("Session", s.Session, "5h"), "five_hour", s.Session));
+        if (s.Weekly != null) list.Add((WindowLabel("Weekly", s.Weekly, "7d"), "seven_day", s.Weekly));
         if (s.WeeklyOpus != null) list.Add(("Opus weekly", "seven_day_opus", s.WeeklyOpus));
-        foreach (var extra in s.Extra) list.Add((Humanize(extra.Key), extra.Key, extra.Window));
+        foreach (var extra in s.Extra) list.Add((extra.Label ?? Humanize(extra.Key), extra.Key, extra.Window));
         return list;
+    }
+
+    private static string WindowLabel(string name, UsageWindow window, string fallback)
+    {
+        if (window.WindowSeconds is not int seconds || seconds <= 0) return $"{name} ({fallback})";
+        string duration = seconds % 86400 == 0 ? $"{seconds / 86400}d"
+            : seconds % 3600 == 0 ? $"{seconds / 3600}h"
+            : $"{Math.Max(1, seconds / 60)}m";
+        return $"{name} ({duration})";
     }
 
     private static string Humanize(string key)
@@ -529,6 +545,15 @@ public sealed class FlyoutForm : Form
         heading.Location = new Point(pad, y);
         Controls.Add(heading);
         y += S(30);
+
+        var codexHint = MakeLabel(
+            CodexUsageClient.HasLocalAuth()
+                ? "Codex usage is detected automatically from your local Codex sign-in."
+                : "Sign in with Codex locally to add its usage automatically.",
+            FontSmall, _t.TextSecondary, w, S(36));
+        codexHint.Location = new Point(pad, y);
+        Controls.Add(codexHint);
+        y += S(36) + S(8);
 
         var nameHint = MakeLabel("Name (e.g. Work)", FontSmall, _t.TextSecondary, w, labelH);
         nameHint.Location = new Point(pad, y);

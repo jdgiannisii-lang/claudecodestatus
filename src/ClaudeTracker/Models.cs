@@ -59,6 +59,7 @@ public sealed class UsageWindow
 {
     public double Utilization { get; set; }
     public DateTimeOffset? ResetsAt { get; set; }
+    public int? WindowSeconds { get; set; }
 }
 
 public sealed class UsageSnapshot
@@ -66,6 +67,7 @@ public sealed class UsageSnapshot
     public UsageWindow? Session { get; set; }
     public UsageWindow? Weekly { get; set; }
     public UsageWindow? WeeklyOpus { get; set; }
+    public string? PlanLabel { get; set; }
 
     /// <summary>Any other rate-limit windows the usage endpoint reports, keyed by their API name.</summary>
     public List<NamedWindow> Extra { get; set; } = new();
@@ -76,17 +78,30 @@ public sealed class UsageSnapshot
 public sealed class NamedWindow
 {
     public required string Key { get; init; }
+    public string? Label { get; init; }
     public required UsageWindow Window { get; init; }
+}
+
+public enum UsageProvider
+{
+    Claude,
+    Codex,
 }
 
 public sealed class AccountState
 {
     public AccountConfig Config { get; }
+    public UsageProvider Provider { get; }
+    public bool CanRemove => Provider == UsageProvider.Claude;
     public UsageSnapshot? Snapshot { get; set; }
     public string? Error { get; set; }
     public DateTimeOffset? RateLimitRetryAt { get; set; }
 
-    public AccountState(AccountConfig config) => Config = config;
+    public AccountState(AccountConfig config, UsageProvider provider = UsageProvider.Claude)
+    {
+        Config = config;
+        Provider = provider;
+    }
 }
 
 public sealed class RefreshedTokens

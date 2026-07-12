@@ -1,7 +1,7 @@
-# Claude Tracker for Windows
+# Claude + Codex Tracker for Windows
 
-A tiny Windows system tray app to track your Claude usage limits — a Windows take on the
-macOS menubar tools that show your 5-hour session usage and weekly cap at a glance.
+A tiny Windows system tray app to track your Claude and OpenAI Codex usage limits — a Windows
+take on the macOS menubar tools that show session usage and weekly caps at a glance.
 
 - **Tray icon** uses a crisp 64px source image to show your current session utilization and
   mini progress bar, with Static, Pulse, and RGB treatments plus fixed warning colors near the limit.
@@ -12,6 +12,8 @@ macOS menubar tools that show your 5-hour session usage and weekly cap at a glan
   bar and reset time. With multiple accounts, a summary line shows your top usage across all of them.
 - **Multiple accounts**: track several Claude accounts side by side; add one with a browser
   sign-in from the Manage tab.
+- **Codex usage**: automatically reads your existing local Codex sign-in and shows its primary
+  and secondary usage windows alongside Claude without copying the token into tracker settings.
 - **Settings tab**: six themes (Dark, Midnight, OLED, Light, Forest, Rose), accent presets plus
   a full color picker, comfortable/compact density, flyout and progress animations, and tray effects.
 - **Auto-refreshes** every 60 seconds; refresh on demand with the ↻ button.
@@ -49,6 +51,10 @@ account's real limit state.
 So the only prerequisite is having signed in to [Claude Code](https://claude.com/claude-code)
 on the machine at least once. Your default sign-in is picked up automatically on first run.
 
+For Codex usage, sign in with the Codex app or CLI. The tracker reads `%USERPROFILE%\.codex\auth.json`
+(or `%CODEX_HOME%\auth.json`) in place and queries the same usage endpoint used by
+[Codex's official client](https://github.com/openai/codex/blob/9e552e9d15ba52bed7077d5357f3e18e330f8f38/codex-rs/backend-client/src/client/rate_limit_resets.rs).
+
 ### Adding more accounts
 
 Open the flyout → **Manage** → give the account a name and click **Sign in with Claude**.
@@ -72,4 +78,5 @@ Claude Code does.
 
 - Pasted credentials are stored in plain text in `%APPDATA%\ClaudeTracker\accounts.json` —
   the same way Claude Code itself stores `.credentials.json`. Keep that in mind on shared machines.
-- Unofficial tool, not affiliated with Anthropic. The usage endpoint is undocumented and may change.
+- Codex credentials remain in Codex's own `auth.json`; the tracker does not copy them into its config.
+- Unofficial tool, not affiliated with Anthropic or OpenAI. The usage endpoints may change.
