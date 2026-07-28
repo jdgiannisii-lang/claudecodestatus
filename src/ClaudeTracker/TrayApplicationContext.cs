@@ -83,7 +83,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         else _flyout.RefreshView();
     }
 
-    public void RequestRefresh() => _ = RefreshAllAsync();
+    public void RequestRefresh() => _ = RefreshAllAsync(manual: true);
 
     public string? AddAccount(string name, string pathOrJson)
     {
@@ -152,7 +152,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _flyout.RefreshView();
     }
 
-    public async Task RefreshAllAsync()
+    public async Task RefreshAllAsync(bool manual = false)
     {
         if (_refreshing) return;
         _refreshing = true;
@@ -161,20 +161,33 @@ public sealed class TrayApplicationContext : ApplicationContext
             EnsureCodexState();
             foreach (var st in _states.ToList())
             {
-                if (st.RateLimitRetryAt is DateTimeOffset retryAt && retryAt > DateTimeOffset.UtcNow)
+                var now = DateTimeOffset.UtcNow;
+                if (st.RateLimitRetryAt is DateTimeOffset retryAt && retryAt > now)
                 {
                     st.Error = FormatRateLimitStatus(retryAt, st.Snapshot != null);
                     continue;
                 }
 
+                if (st.Provider == UsageProvider.Claude &&
+                    (!manual && st.NextUsageRefreshAt is DateTimeOffset nextRefresh && nextRefresh > now ||
+                     manual && st.LastUsageRequestAt is DateTimeOffset lastRequest && now - lastRequest < UsageRefreshPolicy.ManualRefreshCooldown))
+                    continue;
+
                 try
                 {
+                    if (st.Provider == UsageProvider.Claude)
+                        st.LastUsageRequestAt = now;
                     await RefreshAccountAsync(st);
                 }
                 catch (UsageRateLimitException ex)
                 {
-                    st.RateLimitRetryAt = ex.RetryAt;
-                    st.Error = FormatRateLimitStatus(ex.RetryAt, st.Snapshot != null);
+                    st.ConsecutiveUsageRateLimits++;
+                    var nextRetryAt = ex.UsesAdaptiveBackoff
+                        ? RateLimitPolicy.GetRetryAt(ex.RetryAfter, now, st.ConsecutiveUsageRateLimits)
+                        : ex.RetryAt;
+                    st.RateLimitRetryAt = nextRetryAt;
+                    st.NextUsageRefreshAt = nextRetryAt;
+                    st.Error = FormatRateLimitStatus(nextRetryAt, st.Snapshot != null);
                 }
                 catch (Exception ex)
                 {
@@ -216,6 +229,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             st.Snapshot = await AnthropicUsageClient.FetchUsageAsync(creds.AccessToken!);
             st.Error = null;
             st.RateLimitRetryAt = null;
+            st.ConsecutiveUsageRateLimits = 0;
+            st.NextUsageRefreshAt = DateTimeOffset.UtcNow.Add(UsageRefreshPolicy.AutomaticRefreshInterval);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized && creds.RefreshToken != null)
         {
@@ -229,6 +244,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             st.Snapshot = await AnthropicUsageClient.FetchUsageAsync(refreshed.AccessToken!);
             st.Error = null;
             st.RateLimitRetryAt = null;
+            st.ConsecutiveUsageRateLimits = 0;
+            st.NextUsageRefreshAt = DateTimeOffset.UtcNow.Add(UsageRefreshPolicy.AutomaticRefreshInterval);
         }
     }
 

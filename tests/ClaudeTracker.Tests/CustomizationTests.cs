@@ -70,14 +70,15 @@ public sealed class CustomizationTests
     }
 
     [Fact]
-    public void Rate_limit_policy_honors_retry_after_with_safe_bounds()
+    public void Rate_limit_policy_honors_retry_after_and_escalates_without_one()
     {
         var now = new DateTimeOffset(2026, 7, 11, 12, 0, 0, TimeSpan.Zero);
 
         Assert.Equal(now.AddSeconds(90), RateLimitPolicy.GetRetryAt(
             new RetryConditionHeaderValue(TimeSpan.FromSeconds(90)), now));
-        Assert.Equal(now.AddMinutes(2), RateLimitPolicy.GetRetryAt(null, now));
-        Assert.Equal(now.AddMinutes(15), RateLimitPolicy.GetRetryAt(
+        Assert.Equal(now.AddMinutes(5), RateLimitPolicy.GetRetryAt(null, now));
+        Assert.Equal(now.AddMinutes(20), RateLimitPolicy.GetRetryAt(null, now, consecutiveRateLimits: 3));
+        Assert.Equal(now.AddHours(1), RateLimitPolicy.GetRetryAt(
             new RetryConditionHeaderValue(TimeSpan.FromHours(1)), now));
     }
 
@@ -107,6 +108,31 @@ public sealed class CustomizationTests
         Assert.Equal(42, usage.Session!.Utilization);
         Assert.Equal(18000, usage.Session.WindowSeconds);
         Assert.Equal(17, usage.Weekly!.Utilization);
+    }
+
+    [Fact]
+    public void Claude_usage_credits_parse_without_becoming_a_rate_limit_window()
+    {
+        var usage = AnthropicUsageClient.ParseUsage("""
+            {
+              "five_hour": { "utilization": 12 },
+              "extra_usage": {
+                "is_enabled": true,
+                "monthly_limit": 100000,
+                "used_credits": 45710,
+                "utilization": 45.71,
+                "currency": "USD"
+              }
+            }
+            """);
+
+        Assert.NotNull(usage.ClaudeUsageCredits);
+        Assert.True(usage.ClaudeUsageCredits!.IsEnabled);
+        Assert.Equal(100000, usage.ClaudeUsageCredits.MonthlyLimit);
+        Assert.Equal(45710, usage.ClaudeUsageCredits.UsedCredits);
+        Assert.Equal(54290, usage.ClaudeUsageCredits.RemainingCredits);
+        Assert.Equal("54,290 credits left", usage.ClaudeUsageCredits.SummaryLabel);
+        Assert.Empty(usage.Extra);
     }
 
     [Theory]

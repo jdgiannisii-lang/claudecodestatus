@@ -72,6 +72,9 @@ public sealed class UsageSnapshot
     /// <summary>Codex pay-as-you-go credit state, when reported by the Codex usage endpoint.</summary>
     public CodexExtraUsage? ExtraUsage { get; set; }
 
+    /// <summary>Claude Code usage-credit state, when reported by the Claude usage endpoint.</summary>
+    public ClaudeUsageCredits? ClaudeUsageCredits { get; set; }
+
     /// <summary>Any other rate-limit windows the usage endpoint reports, keyed by their API name.</summary>
     public List<NamedWindow> Extra { get; set; } = new();
 
@@ -95,6 +98,33 @@ public sealed class CodexExtraUsage
             : "No credits";
 }
 
+public sealed class ClaudeUsageCredits
+{
+    public bool IsEnabled { get; init; }
+    public decimal? MonthlyLimit { get; init; }
+    public decimal? UsedCredits { get; init; }
+    public double? Utilization { get; init; }
+    public string? Currency { get; init; }
+    public string? DisabledReason { get; init; }
+
+    public decimal? RemainingCredits => MonthlyLimit is decimal limit && UsedCredits is decimal used
+        ? Math.Max(0, limit - used)
+        : null;
+
+    public string SummaryLabel
+    {
+        get
+        {
+            if (!IsEnabled) return "Not enabled";
+            if (RemainingCredits is decimal remaining)
+                return $"{Math.Round(remaining, 0, MidpointRounding.AwayFromZero):N0} credits left";
+            if (UsedCredits is decimal used)
+                return $"{Math.Round(used, 0, MidpointRounding.AwayFromZero):N0} credits used";
+            return "Enabled";
+        }
+    }
+}
+
 public sealed class NamedWindow
 {
     public required string Key { get; init; }
@@ -116,6 +146,9 @@ public sealed class AccountState
     public UsageSnapshot? Snapshot { get; set; }
     public string? Error { get; set; }
     public DateTimeOffset? RateLimitRetryAt { get; set; }
+    public DateTimeOffset? NextUsageRefreshAt { get; set; }
+    public DateTimeOffset? LastUsageRequestAt { get; set; }
+    public int ConsecutiveUsageRateLimits { get; set; }
 
     public AccountState(AccountConfig config, UsageProvider provider = UsageProvider.Claude)
     {

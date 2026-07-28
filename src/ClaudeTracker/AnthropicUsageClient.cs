@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Globalization;
 
 namespace ClaudeTracker;
 
@@ -35,10 +36,7 @@ public static class AnthropicUsageClient
 
         using var resp = await Http.SendAsync(req);
         if (resp.StatusCode == HttpStatusCode.TooManyRequests)
-        {
-            var retryAt = RateLimitPolicy.GetRetryAt(resp.Headers.RetryAfter, DateTimeOffset.UtcNow);
-            throw new UsageRateLimitException(retryAt);
-        }
+            throw new UsageRateLimitException(resp.Headers.RetryAfter);
         if (!resp.IsSuccessStatusCode)
             throw new HttpRequestException($"Usage request failed (HTTP {(int)resp.StatusCode})", null, resp.StatusCode);
 
@@ -126,17 +124,19 @@ public static class AnthropicUsageClient
         var root = JsonNode.Parse(json) as JsonObject
             ?? throw new InvalidOperationException("Unexpected usage response");
 
+        var usage = root["usage"] as JsonObject ?? root;
         var snapshot = new UsageSnapshot
         {
-            Session = ReadWindow(root, "five_hour"),
-            Weekly = ReadWindow(root, "seven_day"),
-            WeeklyOpus = ReadWindow(root, "seven_day_opus"),
+            Session = ReadWindow(usage, "five_hour"),
+            Weekly = ReadWindow(usage, "seven_day"),
+            WeeklyOpus = ReadWindow(usage, "seven_day_opus"),
+            ClaudeUsageCredits = ReadUsageCredits(usage),
             FetchedAt = DateTimeOffset.Now,
         };
 
-        foreach (var kv in root)
+        foreach (var kv in usage)
         {
-            if (kv.Key is "five_hour" or "seven_day" or "seven_day_opus") continue;
+            if (kv.Key is "five_hour" or "seven_day" or "seven_day_opus" or "extra_usage") continue;
             if (kv.Value is JsonObject obj && obj["utilization"] != null)
             {
                 var window = ReadWindowObject(obj);
@@ -153,6 +153,22 @@ public static class AnthropicUsageClient
         var node = root[key] as JsonObject;
         if (node == null && root["usage"] is JsonObject nested) node = nested[key] as JsonObject;
         return node == null ? null : ReadWindowObject(node);
+    }
+
+    private static ClaudeUsageCredits? ReadUsageCredits(JsonObject root)
+    {
+        var node = root["extra_usage"] as JsonObject;
+        if (node == null) return null;
+
+        return new ClaudeUsageCredits
+        {
+            IsEnabled = ReadBool(node, "is_enabled") ?? false,
+            MonthlyLimit = ReadDecimal(node, "monthly_limit"),
+            UsedCredits = ReadDecimal(node, "used_credits"),
+            Utilization = ReadDouble(node, "utilization"),
+            Currency = ReadString(node, "currency"),
+            DisabledReason = ReadString(node, "disabled_reason"),
+        };
     }
 
     private static UsageWindow? ReadWindowObject(JsonObject node)
@@ -180,37 +196,77 @@ public static class AnthropicUsageClient
         try { return obj?[key]?.GetValue<double>(); }
         catch { return null; }
     }
+
+    private static decimal? ReadDecimal(JsonObject? obj, string key)
+    {
+        try
+        {
+            var value = obj?[key];
+            if (value == null) return null;
+            if (value.GetValueKind() == System.Text.Json.JsonValueKind.String &&
+                decimal.TryParse(value.GetValue<string>(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+                return parsed;
+            return value.GetValue<decimal>();
+        }
+        catch { return null; }
+    }
+
+    private static bool? ReadBool(JsonObject? obj, string key)
+    {
+        try
+        {
+            var value = obj?[key];
+            if (value == null) return null;
+            if (value.GetValueKind() == System.Text.Json.JsonValueKind.String &&
+                bool.TryParse(value.GetValue<string>(), out var parsed))
+                return parsed;
+            return value.GetValue<bool>();
+        }
+        catch { return null; }
+    }
 }
 
 public sealed class UsageRateLimitException : HttpRequestException
 {
     public DateTimeOffset RetryAt { get; }
+    public RetryConditionHeaderValue? RetryAfter { get; }
+    public bool UsesAdaptiveBackoff { get; }
 
     public UsageRateLimitException(DateTimeOffset retryAt)
         : base("Usage rate limit reached", null, HttpStatusCode.TooManyRequests)
     {
         RetryAt = retryAt;
     }
+
+    public UsageRateLimitException(RetryConditionHeaderValue? retryAfter)
+        : this(RateLimitPolicy.GetRetryAt(retryAfter, DateTimeOffset.UtcNow))
+    {
+        RetryAfter = retryAfter;
+        UsesAdaptiveBackoff = true;
+    }
 }
 
 public static class RateLimitPolicy
 {
-    private static readonly TimeSpan DefaultDelay = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan MinimumDelay = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan MaximumDelay = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan DefaultDelay = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan MinimumDelay = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MaximumFallbackDelay = TimeSpan.FromHours(1);
 
-    public static DateTimeOffset GetRetryAt(RetryConditionHeaderValue? retryAfter, DateTimeOffset now)
+    public static DateTimeOffset GetRetryAt(RetryConditionHeaderValue? retryAfter, DateTimeOffset now, int consecutiveRateLimits = 1)
     {
-        DateTimeOffset candidate;
-        if (retryAfter?.Date is DateTimeOffset date)
-            candidate = date;
-        else if (retryAfter?.Delta is TimeSpan delta)
-            candidate = now.Add(delta);
-        else
-            candidate = now.Add(DefaultDelay);
+        if (retryAfter?.Date is DateTimeOffset date && date > now)
+            return date < now.Add(MinimumDelay) ? now.Add(MinimumDelay) : date;
+        if (retryAfter?.Delta is TimeSpan delta && delta > TimeSpan.Zero)
+            return delta < MinimumDelay ? now.Add(MinimumDelay) : now.Add(delta);
 
-        if (candidate < now.Add(MinimumDelay)) return now.Add(MinimumDelay);
-        if (candidate > now.Add(MaximumDelay)) return now.Add(MaximumDelay);
-        return candidate;
+        int multiplier = 1 << Math.Min(Math.Max(consecutiveRateLimits - 1, 0), 4);
+        long ticks = Math.Min(DefaultDelay.Ticks * multiplier, MaximumFallbackDelay.Ticks);
+        return now.Add(TimeSpan.FromTicks(ticks));
     }
+}
+
+public static class UsageRefreshPolicy
+{
+    public static readonly TimeSpan AutomaticRefreshInterval = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan ManualRefreshCooldown = TimeSpan.FromMinutes(1);
 }

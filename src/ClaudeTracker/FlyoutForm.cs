@@ -422,6 +422,7 @@ public sealed class FlyoutForm : Form
             }
 
             y = AddCodexExtraUsageRow(card, st, y, w, pad, lineH);
+            y = AddClaudeUsageCreditsRow(card, st, y, w, pad, lineH);
         }
         else
         {
@@ -453,6 +454,7 @@ public sealed class FlyoutForm : Form
             }
 
             y = AddCodexExtraUsageRow(card, st, y, w, pad, lineH);
+            y = AddClaudeUsageCreditsRow(card, st, y, w, pad, lineH);
         }
 
         card.Height = y + pad - S(4);
@@ -467,6 +469,22 @@ public sealed class FlyoutForm : Form
 
         string status = extraUsage.IsInUse ? "In use" : "Not in use";
         var row = MakeLabel($"Extra usage: {extraUsage.BalanceLabel} | {status}",
+            FontSmall, _t.TextSecondary, width - pad * 2, lineHeight);
+        row.Location = new Point(pad, y);
+        row.Click += (s, e) => ToggleExpand(state.Config.Name);
+        card.Controls.Add(row);
+        return y + lineHeight + S(4);
+    }
+
+    private int AddClaudeUsageCreditsRow(Panel card, AccountState state, int y, int width, int pad, int lineHeight)
+    {
+        if (state.Provider != UsageProvider.Claude || state.Snapshot?.ClaudeUsageCredits is not ClaudeUsageCredits credits)
+            return y;
+
+        string usage = credits.Utilization is double utilization
+            ? $" | {Math.Round(utilization)}% used"
+            : "";
+        var row = MakeLabel($"Usage credits: {credits.SummaryLabel}{usage}",
             FontSmall, _t.TextSecondary, width - pad * 2, lineHeight);
         row.Location = new Point(pad, y);
         row.Click += (s, e) => ToggleExpand(state.Config.Name);
