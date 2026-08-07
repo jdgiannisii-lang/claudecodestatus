@@ -5,15 +5,15 @@ namespace ClaudeTracker;
 
 public static class TrayIconRenderer
 {
-    public static Icon Render(double usage, Color accent, string treatment, long elapsedMs)
+    public static Icon Render(double displayedPercentage, Color accent, string treatment, long elapsedMs, double? utilization = null)
     {
         using var bitmap = new Bitmap(64, 64);
         using (var graphics = Graphics.FromImage(bitmap))
         {
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            var color = ColorHelpers.TrayColor(usage, accent, treatment, elapsedMs);
-            var text = usage < 0 ? "--" : Math.Round(Math.Clamp(usage, 0, 100)).ToString();
+            var color = ColorHelpers.TrayColor(utilization ?? displayedPercentage, accent, treatment, elapsedMs);
+            var text = displayedPercentage < 0 ? "--" : Math.Round(Math.Clamp(displayedPercentage, 0, 100)).ToString();
             var fontSize = text.Length >= 3 ? 22f : text == "--" ? 24f : 28f;
             using var backdrop = new SolidBrush(Color.FromArgb(96, 18, 18, 20));
             using var backdropPath = RoundedRect(new Rectangle(2, 2, 60, 47), 12);
@@ -25,9 +25,9 @@ public static class TrayIconRenderer
             using var track = new SolidBrush(Color.FromArgb(120, 120, 125));
             using var trackPath = RoundedRect(new Rectangle(6, 52, 52, 6), 3);
             graphics.FillPath(track, trackPath);
-            if (usage >= 0)
+            if (displayedPercentage >= 0)
             {
-                var fill = Math.Max(3, (int)Math.Round(Math.Clamp(usage, 0, 100) * 52 / 100d));
+                var fill = Math.Max(3, (int)Math.Round(Math.Clamp(displayedPercentage, 0, 100) * 52 / 100d));
                 using var fillPath = RoundedRect(new Rectangle(6, 52, fill, 6), 3);
                 graphics.FillPath(brush, fillPath);
             }

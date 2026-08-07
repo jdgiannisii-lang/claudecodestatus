@@ -349,15 +349,18 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void UpdateIcon()
     {
-        double best = -1;
+        double displayedPercentage = -1, highestUtilization = -1;
         foreach (var st in _states)
         {
-            if (st.Snapshot?.Session != null)
-                best = Math.Max(best, st.Snapshot.Session.Utilization);
+            if (st.Snapshot?.Session is { } session && session.Utilization > highestUtilization)
+            {
+                highestUtilization = session.Utilization;
+                displayedPercentage = UsagePresentation.DisplayPercentage(st.Provider, session.Utilization);
+            }
         }
 
         var accent = ColorTranslator.FromHtml(ColorHelpers.ParseOpaqueHtml(_config.AccentColor, Color.White));
-        var icon = TrayIconRenderer.Render(best, accent, _config.TrayTreatment, Environment.TickCount64);
+        var icon = TrayIconRenderer.Render(displayedPercentage, accent, _config.TrayTreatment, Environment.TickCount64, highestUtilization);
         var old = _trayIcon.Icon;
         _trayIcon.Icon = icon;
         old?.Dispose();
@@ -379,8 +382,11 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             if (st.Snapshot?.Session != null)
             {
-                string weekly = st.Snapshot.Weekly != null ? $" wk {Math.Round(st.Snapshot.Weekly.Utilization)}%" : "";
-                parts.Add($"{st.Config.Name}: {Math.Round(st.Snapshot.Session.Utilization)}%{weekly}");
+                string session = UsagePresentation.PercentageLabel(st.Provider, st.Snapshot.Session.Utilization);
+                string weekly = st.Snapshot.Weekly != null
+                    ? $" wk {UsagePresentation.PercentageLabel(st.Provider, st.Snapshot.Weekly.Utilization)}"
+                    : "";
+                parts.Add($"{st.Config.Name}: {session}{weekly}");
             }
             else
             {

@@ -138,6 +138,22 @@ public enum UsageProvider
     Codex,
 }
 
+/// <summary>Converts provider-specific API usage into the wording shown to the user.</summary>
+public static class UsagePresentation
+{
+    public static double DisplayPercentage(UsageProvider provider, double utilization)
+    {
+        double clamped = Math.Clamp(utilization, 0, 100);
+        return provider == UsageProvider.Codex ? 100 - clamped : clamped;
+    }
+
+    public static string PercentageLabel(UsageProvider provider, double utilization)
+    {
+        string percentage = Math.Round(DisplayPercentage(provider, utilization)).ToString();
+        return provider == UsageProvider.Codex ? percentage + "% left" : percentage + "%";
+    }
+}
+
 public sealed class AccountState
 {
     public AccountConfig Config { get; }

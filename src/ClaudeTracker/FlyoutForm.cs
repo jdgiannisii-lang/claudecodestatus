@@ -257,17 +257,35 @@ public sealed class FlyoutForm : Form
     private string? BuildSummary()
     {
         double maxSession = -1, maxWeekly = -1;
+        AccountState? sessionOwner = null, weeklyOwner = null;
         foreach (var st in _owner.States)
         {
-            if (st.Snapshot?.Session != null) maxSession = Math.Max(maxSession, st.Snapshot.Session.Utilization);
-            if (st.Snapshot?.Weekly != null) maxWeekly = Math.Max(maxWeekly, st.Snapshot.Weekly.Utilization);
+            if (st.Snapshot?.Session is { } session && session.Utilization > maxSession)
+            {
+                maxSession = session.Utilization;
+                sessionOwner = st;
+            }
+            if (st.Snapshot?.Weekly is { } weekly && weekly.Utilization > maxWeekly)
+            {
+                maxWeekly = weekly.Utilization;
+                weeklyOwner = st;
+            }
         }
         if (maxSession < 0 && maxWeekly < 0) return null;
 
-        string summary = _owner.States.Count + " accounts";
-        if (maxSession >= 0) summary += " · top session " + Math.Round(maxSession) + "%";
-        if (maxWeekly >= 0) summary += " · top weekly " + Math.Round(maxWeekly) + "%";
-        return summary;
+        if (sessionOwner != null || weeklyOwner != null)
+        {
+            var summaryParts = new List<string> { _owner.States.Count + " accounts" };
+            if (sessionOwner != null)
+                summaryParts.Add(sessionOwner.Config.Name + " session " +
+                    UsagePresentation.PercentageLabel(sessionOwner.Provider, maxSession));
+            if (weeklyOwner != null)
+                summaryParts.Add(weeklyOwner.Config.Name + " weekly " +
+                    UsagePresentation.PercentageLabel(weeklyOwner.Provider, maxWeekly));
+            return string.Join(" / ", summaryParts);
+        }
+
+        return _owner.States.Count + " accounts";
     }
 
     private int BuildTabs(int y)
@@ -340,7 +358,7 @@ public sealed class FlyoutForm : Form
         int closeX = w - pad - S(24);
         int closeSlot = st.CanRemove ? S(30) : 0;
         int chevX = w - pad - closeSlot - S(18);
-        int pctX = chevX - S(4) - S(64);
+        int pctX = chevX - S(4) - S(78);
 
         string accountTitle = st.Snapshot?.PlanLabel is string plan
             ? $"{acctName} · {plan}"
@@ -351,9 +369,12 @@ public sealed class FlyoutForm : Form
         name.Click += (s, e) => ToggleExpand(acctName);
         card.Controls.Add(name);
 
-        double sessionPct = st.Snapshot?.Session?.Utilization ?? -1;
-        var pct = MakeLabel(sessionPct >= 0 ? Math.Round(sessionPct) + "%" : "–",
-            FontCard, SeverityColor(sessionPct), S(64), rowH);
+        double sessionUtilization = st.Snapshot?.Session?.Utilization ?? -1;
+        string sessionText = sessionUtilization >= 0
+            ? UsagePresentation.PercentageLabel(st.Provider, sessionUtilization)
+            : "–";
+        var pct = MakeLabel(sessionText,
+            FontCard, SeverityColor(sessionUtilization), S(78), rowH);
         pct.TextAlign = ContentAlignment.MiddleRight;
         pct.Location = new Point(pctX, y);
         card.Controls.Add(pct);
@@ -378,8 +399,8 @@ public sealed class FlyoutForm : Form
 
         y += rowH + S(10);
 
-        double frac = Math.Clamp(Math.Max(sessionPct, 0) / 100.0, 0, 1);
-        AddBar(card, "main/" + acctName, frac, new Point(pad, y), w - pad * 2, S(8));
+        double frac = sessionUtilization < 0 ? 0 : UsagePresentation.DisplayPercentage(st.Provider, sessionUtilization) / 100.0;
+        AddBar(card, "main/" + acctName, frac, sessionUtilization, new Point(pad, y), w - pad * 2, S(8));
         y += S(8) + S(12);
 
         int lineH = S(20);
@@ -411,9 +432,9 @@ public sealed class FlyoutForm : Form
 
             if (st.Snapshot.Weekly != null)
             {
-                string weeklyText = "Weekly " + Math.Round(st.Snapshot.Weekly.Utilization) + "%";
+                string weeklyText = "Weekly " + UsagePresentation.PercentageLabel(st.Provider, st.Snapshot.Weekly.Utilization);
                 if (st.Snapshot.WeeklyOpus is { Utilization: > 0 })
-                    weeklyText += "  ·  Opus " + Math.Round(st.Snapshot.WeeklyOpus.Utilization) + "%";
+                    weeklyText += "  ·  Opus " + UsagePresentation.PercentageLabel(st.Provider, st.Snapshot.WeeklyOpus.Utilization);
                 var weekly = MakeLabel(weeklyText, FontSmall, _t.TextSecondary, w - pad * 2, lineH);
                 weekly.Location = new Point(pad, y);
                 weekly.Click += (s, e) => ToggleExpand(acctName);
@@ -432,15 +453,16 @@ public sealed class FlyoutForm : Form
                 rowName.Location = new Point(pad, y);
                 card.Controls.Add(rowName);
 
-                var rowPct = MakeLabel(Math.Round(window.Utilization) + "%",
-                    FontSmall, SeverityColor(window.Utilization), S(64), S(18));
+                var rowPct = MakeLabel(UsagePresentation.PercentageLabel(st.Provider, window.Utilization),
+                    FontSmall, SeverityColor(window.Utilization), S(78), S(18));
                 rowPct.TextAlign = ContentAlignment.MiddleRight;
-                rowPct.Location = new Point(w - pad - S(64), y);
+                rowPct.Location = new Point(w - pad - S(78), y);
                 card.Controls.Add(rowPct);
                 y += S(18) + S(4);
 
-                AddBar(card, acctName + "/" + key, Math.Clamp(window.Utilization / 100.0, 0, 1),
-                    new Point(pad, y), w - pad * 2, S(5));
+                AddBar(card, acctName + "/" + key,
+                    UsagePresentation.DisplayPercentage(st.Provider, window.Utilization) / 100.0,
+                    window.Utilization, new Point(pad, y), w - pad * 2, S(5));
                 y += S(5) + S(4);
 
                 if (window.ResetsAt is DateTimeOffset resetAt)
@@ -492,7 +514,7 @@ public sealed class FlyoutForm : Form
         return y + lineHeight + S(4);
     }
 
-    private void AddBar(Panel parent, string key, double frac, Point location, int width, int height)
+    private void AddBar(Panel parent, string key, double frac, double utilization, Point location, int width, int height)
     {
         bool animate = _owner.Config.AnimateBars;
         double start = _lastFrac.GetValueOrDefault(key, 0);
@@ -502,7 +524,7 @@ public sealed class FlyoutForm : Form
             Height = height,
             BackColor = parent.BackColor,
             Track = _t.Track,
-            Fill = frac >= 0.9 ? _t.Danger : frac >= 0.7 ? _t.Warn : _accent,
+            Fill = utilization >= 90 ? _t.Danger : utilization >= 70 ? _t.Warn : _accent,
             Fraction = animate ? start : frac,
             Target = frac,
             Location = location,

@@ -110,6 +110,17 @@ public sealed class CustomizationTests
         Assert.Equal(17, usage.Weekly!.Utilization);
     }
 
+    [Theory]
+    [InlineData(UsageProvider.Codex, 17, 83, "83% left")]
+    [InlineData(UsageProvider.Claude, 17, 17, "17%")]
+    [InlineData(UsageProvider.Codex, 100, 0, "0% left")]
+    public void Usage_presentation_makes_Codex_remaining_explicit(
+        UsageProvider provider, double utilization, double expectedPercentage, string expectedLabel)
+    {
+        Assert.Equal(expectedPercentage, UsagePresentation.DisplayPercentage(provider, utilization));
+        Assert.Equal(expectedLabel, UsagePresentation.PercentageLabel(provider, utilization));
+    }
+
     [Fact]
     public void Claude_usage_credits_parse_without_becoming_a_rate_limit_window()
     {

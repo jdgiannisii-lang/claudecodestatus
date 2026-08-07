@@ -3,10 +3,11 @@
 A tiny Windows system tray app to track your Claude and OpenAI Codex usage limits — a Windows
 take on the macOS menubar tools that show session usage and weekly caps at a glance.
 
-- **Tray icon** uses a crisp 64px source image to show your current session utilization and
+- **Tray icon** uses a crisp 64px source image to show your current session percentage and
   mini progress bar, with Static, Pulse, and RGB treatments plus fixed warning colors near the limit.
 - **Click the icon** for a flyout with one card per account: session %, progress bar,
-  reset time, and weekly (7-day) usage — plus Opus weekly usage when relevant.
+  reset time, and weekly (7-day) usage — plus Opus weekly usage when relevant. Codex values are
+  explicitly shown as percentage left; Claude values retain their existing utilization display.
 - **Expandable cards**: click a card to see every rate-limit window the API reports —
   session (5h), weekly (7d), Opus weekly, and anything new Anthropic adds — each with its own
   bar and reset time. With multiple accounts, a summary line shows your top usage across all of them.
